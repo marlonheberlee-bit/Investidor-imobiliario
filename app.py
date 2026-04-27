@@ -351,12 +351,24 @@ parcela_mensal = st.sidebar.number_input("Parcela mensal inicial", min_value=0.0
 prazo_meses = st.sidebar.number_input("Prazo total em meses", min_value=1, value=120, step=1)
 mes_entrega = st.sidebar.number_input("Mês de entrega do empreendimento", min_value=1, value=48, step=1)
 
-st.sidebar.subheader("📌 Reforços personalizados")
-reforcos_texto = st.sidebar.text_area(
-    "Formato: mês=valor",
-    value="12=10000\n24=10000\n36=10000\n48=50000",
+st.sidebar.subheader("📌 Reforços antes da entrega")
+reforcos_antes_texto = st.sidebar.text_area(
+    "Antes da entrega — formato: mês=valor",
+    value="12=10000
+24=10000
+36=10000
+48=50000",
     height=120,
-    help="Exemplo: 12=10000 significa reforço de R$ 10.000 no mês 12."
+    help="Exemplo: 24=10000 significa reforço de R$ 10.000 no mês 24, antes ou no mês da entrega."
+)
+
+st.sidebar.subheader("🏗️ Reforços depois da entrega")
+reforcos_depois_texto = st.sidebar.text_area(
+    "Depois da entrega — formato: mês=valor",
+    value="60=15000
+72=15000",
+    height=100,
+    help="Exemplo: 60=15000 significa reforço de R$ 15.000 no mês 60, depois da entrega."
 )
 
 valorizacao_anual = st.sidebar.slider("Valorização anual estimada", 0.0, 30.0, 15.0, 0.5) / 100
@@ -364,7 +376,9 @@ cub_anual = st.sidebar.slider("CUB/INCC anual estimado", 0.0, 15.0, 4.3, 0.1) / 
 anos_analise = st.sidebar.slider("Anos para análise", 1, 10, 5)
 metragem = st.sidebar.number_input("Metragem privativa m²", min_value=1.0, value=90.0, step=1.0)
 
-reforcos_dict = ler_reforcos(reforcos_texto)
+reforcos_antes_dict = ler_reforcos(reforcos_antes_texto)
+reforcos_depois_dict = ler_reforcos(reforcos_depois_texto)
+reforcos_dict = {**reforcos_antes_dict, **reforcos_depois_dict}
 anos_entrega = max(mes_entrega / 12, 1)
 valor_m2 = valor_imovel / metragem if metragem > 0 else 0
 
@@ -379,7 +393,9 @@ for mes in range(1, int(prazo_meses) + 1):
     ano_corrente = ((mes - 1) // 12) + 1
     reajuste = (1 + cub_anual) ** ((mes - 1) / 12)
     parcela_corrigida = parcela_mensal * reajuste
-    reforco = reforcos_dict.get(mes, 0) * reajuste
+    reforco_antes = reforcos_antes_dict.get(mes, 0) * reajuste
+    reforco_depois = reforcos_depois_dict.get(mes, 0) * reajuste
+    reforco = reforco_antes + reforco_depois
 
     aporte_mes = parcela_corrigida + reforco
     if mes == 1:
@@ -396,7 +412,9 @@ for mes in range(1, int(prazo_meses) + 1):
         "Mês": mes,
         "Ano": ano_corrente,
         "Parcela corrigida": parcela_corrigida,
-        "Reforço": reforco,
+        "Reforço antes da entrega": reforco_antes,
+        "Reforço depois da entrega": reforco_depois,
+        "Reforço total": reforco,
         "Aporte do mês": aporte_mes,
         "Aporte acumulado": aporte_acumulado,
         "Valor estimado do imóvel": valor_estimado,
@@ -416,7 +434,9 @@ for ano in range(1, anos_analise + 1):
     linhas_ano.append({
         "Ano": ano,
         "Aporte no ano": sum([x["Aporte do mês"] for x in dados_do_ano]),
-        "Reforços no ano": sum([x["Reforço"] for x in dados_do_ano]),
+        "Reforços antes da entrega": sum([x["Reforço antes da entrega"] for x in dados_do_ano]),
+        "Reforços depois da entrega": sum([x["Reforço depois da entrega"] for x in dados_do_ano]),
+        "Reforços totais": sum([x["Reforço total"] for x in dados_do_ano]),
         "Aporte acumulado": ultimo["Aporte acumulado"],
         "Valor estimado do imóvel": ultimo["Valor estimado do imóvel"],
         "Lucro bruto": ultimo["Lucro bruto"],
@@ -495,7 +515,7 @@ with tab1:
     st.markdown('<div class="section-subtitle">Projeção de aportes, reforços personalizados, valorização e retorno total na venda.</div>', unsafe_allow_html=True)
 
     df_show = df_ano.copy()
-    for col in ["Aporte no ano", "Reforços no ano", "Aporte acumulado", "Valor estimado do imóvel", "Lucro bruto", "💰 Retorno total na venda"]:
+    for col in ["Aporte no ano", "Reforços antes da entrega", "Reforços depois da entrega", "Reforços totais", "Aporte acumulado", "Valor estimado do imóvel", "Lucro bruto", "💰 Retorno total na venda"]:
         df_show[col] = df_show[col].apply(moeda)
     df_show["Múltiplo do capital"] = df_show["Múltiplo do capital"].apply(lambda x: f"{x:.2f}x")
     df_show["ROI acumulado"] = df_show["ROI acumulado"].apply(percentual)
@@ -523,7 +543,7 @@ with tab2:
     st.markdown('<div class="section-title">📆 Fluxo mensal</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-subtitle">Acompanhamento mês a mês do desembolso, reforços, valorização e retorno estimado.</div>', unsafe_allow_html=True)
     dfm = df_mes.copy()
-    for col in ["Parcela corrigida", "Reforço", "Aporte do mês", "Aporte acumulado", "Valor estimado do imóvel", "Lucro bruto", "💰 Dinheiro na mão"]:
+    for col in ["Parcela corrigida", "Reforço antes da entrega", "Reforço depois da entrega", "Reforço total", "Aporte do mês", "Aporte acumulado", "Valor estimado do imóvel", "Lucro bruto", "💰 Dinheiro na mão"]:
         dfm[col] = dfm[col].apply(moeda)
     dfm["Múltiplo"] = dfm["Múltiplo"].apply(lambda x: f"{x:.2f}x")
     dfm["ROI"] = dfm["ROI"].apply(percentual)
@@ -535,7 +555,7 @@ with tab3:
     st.markdown('<div class="section-title">🗓️ Ano a ano</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-subtitle">Resumo anual para comparar o melhor momento de saída.</div>', unsafe_allow_html=True)
     dfa = df_ano.copy()
-    for col in ["Aporte no ano", "Reforços no ano", "Aporte acumulado", "Valor estimado do imóvel", "Lucro bruto", "💰 Retorno total na venda"]:
+    for col in ["Aporte no ano", "Reforços antes da entrega", "Reforços depois da entrega", "Reforços totais", "Aporte acumulado", "Valor estimado do imóvel", "Lucro bruto", "💰 Retorno total na venda"]:
         dfa[col] = dfa[col].apply(moeda)
     dfa["Múltiplo do capital"] = dfa["Múltiplo do capital"].apply(lambda x: f"{x:.2f}x")
     dfa["ROI acumulado"] = dfa["ROI acumulado"].apply(percentual)
@@ -557,14 +577,16 @@ with tab4:
 with tab5:
     st.markdown('<div class="section-box">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">📝 Dados variáveis usados na simulação</div>', unsafe_allow_html=True)
-    reforcos_formatados = ", ".join([f"Mês {m}: {moeda(v)}" for m, v in sorted(reforcos_dict.items())]) if reforcos_dict else "Nenhum"
+    reforcos_antes_formatados = ", ".join([f"Mês {m}: {moeda(v)}" for m, v in sorted(reforcos_antes_dict.items())]) if reforcos_antes_dict else "Nenhum"
+    reforcos_depois_formatados = ", ".join([f"Mês {m}: {moeda(v)}" for m, v in sorted(reforcos_depois_dict.items())]) if reforcos_depois_dict else "Nenhum"
     dados = pd.DataFrame([
         ["Valor atual do imóvel", moeda(valor_imovel)],
         ["Entrada", moeda(entrada)],
         ["Parcela mensal inicial", moeda(parcela_mensal)],
         ["Prazo total", f"{prazo_meses} meses"],
         ["Mês de entrega", f"{mes_entrega}"],
-        ["Reforços personalizados", reforcos_formatados],
+        ["Reforços antes da entrega", reforcos_antes_formatados],
+        ["Reforços depois da entrega", reforcos_depois_formatados],
         ["Valorização anual", percentual(valorizacao_anual * 100)],
         ["CUB/INCC anual", percentual(cub_anual * 100)],
         ["Anos de análise", f"{anos_analise}"],
