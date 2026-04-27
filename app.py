@@ -232,6 +232,46 @@ def ler_reforcos(texto):
             pass
     return reforcos
 
+def expandir_reforcos_antes_entrega(reforcos_base, mes_entrega):
+    """
+    Reforços antes da entrega:
+    Se o usuário informa 6=40000 e 10=40000,
+    aplica nos meses 6, 10, 18, 22, 30, 34... até o mês de entrega.
+    Se informar mês maior que 12, considera como mês absoluto.
+    """
+    reforcos_expandidos = {}
+    for mes_base, valor in reforcos_base.items():
+        if mes_base <= 12:
+            mes = mes_base
+            while mes <= mes_entrega:
+                reforcos_expandidos[mes] = reforcos_expandidos.get(mes, 0) + valor
+                mes += 12
+        else:
+            if mes_base <= mes_entrega:
+                reforcos_expandidos[mes_base] = reforcos_expandidos.get(mes_base, 0) + valor
+    return reforcos_expandidos
+
+
+def expandir_reforcos_depois_entrega(reforcos_base, mes_entrega, prazo_meses):
+    """
+    Reforços depois da entrega:
+    Se a entrega é no mês 48 e o usuário informa 6=50000 e 10=50000,
+    aplica nos meses 54, 58, 66, 70, 78, 82... até o fim do prazo.
+    Se informar mês maior que 12, considera como mês absoluto do contrato.
+    """
+    reforcos_expandidos = {}
+    for mes_base, valor in reforcos_base.items():
+        if mes_base <= 12:
+            mes = mes_entrega + mes_base
+            while mes <= prazo_meses:
+                reforcos_expandidos[mes] = reforcos_expandidos.get(mes, 0) + valor
+                mes += 12
+        else:
+            if mes_base > mes_entrega and mes_base <= prazo_meses:
+                reforcos_expandidos[mes_base] = reforcos_expandidos.get(mes_base, 0) + valor
+    return reforcos_expandidos
+
+
 def calcular_nota(roi_total, multiplo_capital, aporte_sobre_valor, anos_entrega):
     nota = 0
     if roi_total >= 100: nota += 30
@@ -311,18 +351,20 @@ mes_entrega = st.sidebar.number_input("Mês de entrega do empreendimento", min_v
 
 st.sidebar.subheader("📌 Reforços antes da entrega")
 reforcos_antes_texto = st.sidebar.text_area(
-    "Antes da entrega — formato: mês=valor",
-    value="12=10000\n24=10000\n36=10000\n48=50000",
+    "Meses recorrentes antes da entrega — formato: mês=valor",
+    value="6=40000
+10=40000",
     height=120,
-    help="Exemplo: 24=10000 significa reforço de R$ 10.000 no mês 24."
+    help="Exemplo: 6=40000 e 10=40000 aplica nos meses 6, 10, 18, 22, 30, 34... até a entrega. Se quiser um mês absoluto, use número maior que 12."
 )
 
 st.sidebar.subheader("🏗️ Reforços depois da entrega")
 reforcos_depois_texto = st.sidebar.text_area(
-    "Depois da entrega — formato: mês=valor",
-    value="60=15000\n72=15000",
+    "Meses recorrentes depois da entrega — formato: mês=valor",
+    value="6=50000
+10=50000",
     height=100,
-    help="Exemplo: 60=15000 significa reforço de R$ 15.000 no mês 60."
+    help="Exemplo: se a entrega é no mês 48, 6=50000 e 10=50000 aplica nos meses 54, 58, 66, 70... até o fim do prazo."
 )
 
 valorizacao_anual = st.sidebar.slider("Valorização anual estimada", 0.0, 30.0, 15.0, 0.5) / 100
@@ -330,8 +372,10 @@ cub_anual = st.sidebar.slider("CUB/INCC anual estimado", 0.0, 15.0, 4.3, 0.1) / 
 anos_analise = st.sidebar.slider("Anos para análise", 1, 10, 5)
 metragem = st.sidebar.number_input("Metragem privativa m²", min_value=1.0, value=90.0, step=1.0)
 
-reforcos_antes_dict = ler_reforcos(reforcos_antes_texto)
-reforcos_depois_dict = ler_reforcos(reforcos_depois_texto)
+reforcos_antes_base = ler_reforcos(reforcos_antes_texto)
+reforcos_depois_base = ler_reforcos(reforcos_depois_texto)
+reforcos_antes_dict = expandir_reforcos_antes_entrega(reforcos_antes_base, int(mes_entrega))
+reforcos_depois_dict = expandir_reforcos_depois_entrega(reforcos_depois_base, int(mes_entrega), int(prazo_meses))
 anos_entrega = max(mes_entrega / 12, 1)
 valor_m2 = valor_imovel / metragem if metragem > 0 else 0
 
@@ -530,14 +574,18 @@ with tab5:
     st.markdown('<div class="section-title">📝 Dados variáveis usados na simulação</div>', unsafe_allow_html=True)
     reforcos_antes_formatados = ", ".join([f"Mês {m}: {moeda(v)}" for m, v in sorted(reforcos_antes_dict.items())]) if reforcos_antes_dict else "Nenhum"
     reforcos_depois_formatados = ", ".join([f"Mês {m}: {moeda(v)}" for m, v in sorted(reforcos_depois_dict.items())]) if reforcos_depois_dict else "Nenhum"
+    reforcos_antes_base_formatados = ", ".join([f"Mês {m}: {moeda(v)}" for m, v in sorted(reforcos_antes_base.items())]) if reforcos_antes_base else "Nenhum"
+    reforcos_depois_base_formatados = ", ".join([f"Mês {m}: {moeda(v)}" for m, v in sorted(reforcos_depois_base.items())]) if reforcos_depois_base else "Nenhum"
     dados = pd.DataFrame([
         ["Valor atual do imóvel", moeda(valor_imovel)],
         ["Entrada", moeda(entrada)],
         ["Parcela mensal inicial", moeda(parcela_mensal)],
         ["Prazo total", f"{prazo_meses} meses"],
         ["Mês de entrega", f"{mes_entrega}"],
-        ["Reforços antes da entrega", reforcos_antes_formatados],
-        ["Reforços depois da entrega", reforcos_depois_formatados],
+        ["Reforços antes da entrega informados", reforcos_antes_base_formatados],
+        ["Reforços antes da entrega aplicados", reforcos_antes_formatados],
+        ["Reforços depois da entrega informados", reforcos_depois_base_formatados],
+        ["Reforços depois da entrega aplicados", reforcos_depois_formatados],
         ["Valorização anual", percentual(valorizacao_anual * 100)],
         ["CUB/INCC anual", percentual(cub_anual * 100)],
         ["Anos de análise", f"{anos_analise}"],
