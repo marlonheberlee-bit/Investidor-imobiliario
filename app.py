@@ -1,12 +1,12 @@
 import streamlit as st
 import pandas as pd
-import math
 
-st.set_page_config(page_title="Investidor Imobiliário PRO", page_icon="🏢", layout="wide")
+st.set_page_config(
+    page_title="Investidor Imobiliário PRO",
+    page_icon="🏢",
+    layout="wide"
+)
 
-# =============================
-# CSS — VISUAL IGUAL AO PAINEL EXECUTIVO PROFISSIONAL
-# =============================
 st.markdown("""
 <style>
 .block-container {
@@ -14,9 +14,11 @@ st.markdown("""
     padding-bottom: 2rem;
     max-width: 1500px;
 }
+
 [data-testid="stSidebar"] {
     background: #f1f5f9;
 }
+
 .hero {
     background: linear-gradient(135deg, #111827 0%, #1f2937 60%, #374151 100%);
     padding: 30px 36px;
@@ -25,16 +27,19 @@ st.markdown("""
     margin-bottom: 18px;
     box-shadow: 0 10px 28px rgba(0,0,0,.16);
 }
+
 .hero h1 {
     margin: 0;
     font-size: 36px;
     font-weight: 900;
 }
+
 .hero p {
     margin-top: 12px;
     color: #d1d5db;
     font-size: 16px;
 }
+
 .class-card {
     background: linear-gradient(145deg, #073ec7, #0057ff);
     border-radius: 22px;
@@ -43,17 +48,20 @@ st.markdown("""
     min-height: 418px;
     box-shadow: 0 14px 35px rgba(37, 99, 235, 0.25);
 }
+
 .class-label {
     font-size: 15px;
     font-weight: 800;
     letter-spacing: .5px;
 }
+
 .class-grade {
-    font-size: 62px;
+    font-size: 58px;
     font-weight: 900;
     line-height: .95;
     margin: 26px 0 18px 0;
 }
+
 .class-score {
     display: inline-block;
     background: rgba(15, 23, 42, 0.25);
@@ -62,6 +70,7 @@ st.markdown("""
     font-size: 20px;
     font-weight: 900;
 }
+
 .quick-box {
     margin-top: 28px;
     background: rgba(15, 23, 42, 0.22);
@@ -69,11 +78,13 @@ st.markdown("""
     border-radius: 16px;
     line-height: 1.55;
 }
+
 .quick-title {
     font-size: 17px;
     font-weight: 900;
     margin-bottom: 12px;
 }
+
 .metric-card {
     background: white;
     border: 1px solid #e5e7eb;
@@ -85,12 +96,14 @@ st.markdown("""
     margin-bottom: 14px;
     overflow: hidden;
 }
+
 .metric-title {
     font-size: 15px;
     font-weight: 900;
     color: #0f172a;
     margin-bottom: 12px;
 }
+
 .metric-icon {
     width: 58px;
     height: 58px;
@@ -102,20 +115,24 @@ st.markdown("""
     font-size: 30px;
     background: #dbeafe;
 }
+
 .green-bg { background: #dcfce7; }
 .purple-bg { background: #ede9fe; }
 .orange-bg { background: #ffedd5; }
+
 .metric-value {
     font-size: 27px;
     font-weight: 900;
     line-height: 1.1;
     white-space: nowrap;
 }
+
 .metric-sub {
     margin-top: 8px;
     color: #64748b;
     font-size: 13px;
 }
+
 .metric-pill {
     display: inline-block;
     margin-top: 10px;
@@ -124,14 +141,17 @@ st.markdown("""
     font-size: 12px;
     font-weight: 800;
 }
+
 .blue { color: #0b4ad9; }
 .green { color: #087a20; }
 .purple { color: #5b21b6; }
 .orange { color: #ea580c; }
+
 .pill-blue { background: #dbeafe; color: #0b4ad9; }
 .pill-green { background: #dcfce7; color: #087a20; }
 .pill-purple { background: #ede9fe; color: #5b21b6; }
 .pill-orange { background: #ffedd5; color: #ea580c; }
+
 .section-box {
     background: white;
     border: 1px solid #e5e7eb;
@@ -140,17 +160,20 @@ st.markdown("""
     margin-top: 16px;
     box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
 }
+
 .section-title {
     color: #0b4ad9;
     font-size: 20px;
     font-weight: 900;
     margin-bottom: 2px;
 }
+
 .section-subtitle {
     color: #64748b;
     font-size: 14px;
     margin-bottom: 16px;
 }
+
 .summary-box {
     background: linear-gradient(90deg, #f0fdf4, #ffffff);
     border: 1px solid #86efac;
@@ -162,33 +185,39 @@ st.markdown("""
     gap: 14px;
     align-items: center;
 }
+
 .summary-title {
     color: #087a20;
     font-size: 17px;
     font-weight: 900;
     margin-bottom: 8px;
 }
+
 .summary-text {
     font-size: 15px;
     line-height: 1.55;
     color: #0f172a;
 }
+
 .summary-metric {
     text-align: center;
     border-left: 1px solid #d1fae5;
     padding-left: 12px;
 }
+
 .summary-value {
     color: #087a20;
     font-size: 24px;
     font-weight: 900;
     white-space: nowrap;
 }
+
 .summary-label {
     color: #475569;
     font-size: 13px;
     margin-top: 6px;
 }
+
 .notice {
     margin-top: 18px;
     padding: 12px 16px;
@@ -201,20 +230,20 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# =============================
-# FUNÇÕES
-# =============================
+
 def moeda(valor):
     try:
         return f"R$ {float(valor):,.0f}".replace(",", ".")
     except Exception:
         return "R$ 0"
 
+
 def percentual(valor):
     try:
         return f"{float(valor):.2f}%".replace(".", ",")
     except Exception:
         return "0,00%"
+
 
 def ler_reforcos(texto):
     reforcos = {}
@@ -232,71 +261,80 @@ def ler_reforcos(texto):
             pass
     return reforcos
 
-def expandir_reforcos_antes_entrega(reforcos_base, mes_entrega):
-    """
-    Reforços antes da entrega:
-    Se o usuário informa 6=40000 e 10=40000,
-    aplica nos meses 6, 10, 18, 22, 30, 34... até o mês de entrega.
-    Se informar mês maior que 12, considera como mês absoluto.
-    """
-    reforcos_expandidos = {}
+
+def expandir_reforcos_antes(reforcos_base, mes_entrega):
+    resultado = {}
     for mes_base, valor in reforcos_base.items():
         if mes_base <= 12:
             mes = mes_base
             while mes <= mes_entrega:
-                reforcos_expandidos[mes] = reforcos_expandidos.get(mes, 0) + valor
+                resultado[mes] = resultado.get(mes, 0) + valor
                 mes += 12
         else:
             if mes_base <= mes_entrega:
-                reforcos_expandidos[mes_base] = reforcos_expandidos.get(mes_base, 0) + valor
-    return reforcos_expandidos
+                resultado[mes_base] = resultado.get(mes_base, 0) + valor
+    return resultado
 
 
-def expandir_reforcos_depois_entrega(reforcos_base, mes_entrega, prazo_meses):
-    """
-    Reforços depois da entrega:
-    Se a entrega é no mês 48 e o usuário informa 6=50000 e 10=50000,
-    aplica nos meses 54, 58, 66, 70, 78, 82... até o fim do prazo.
-    Se informar mês maior que 12, considera como mês absoluto do contrato.
-    """
-    reforcos_expandidos = {}
+def expandir_reforcos_depois(reforcos_base, mes_entrega, prazo_meses):
+    resultado = {}
     for mes_base, valor in reforcos_base.items():
         if mes_base <= 12:
             mes = mes_entrega + mes_base
             while mes <= prazo_meses:
-                reforcos_expandidos[mes] = reforcos_expandidos.get(mes, 0) + valor
+                resultado[mes] = resultado.get(mes, 0) + valor
                 mes += 12
         else:
             if mes_base > mes_entrega and mes_base <= prazo_meses:
-                reforcos_expandidos[mes_base] = reforcos_expandidos.get(mes_base, 0) + valor
-    return reforcos_expandidos
+                resultado[mes_base] = resultado.get(mes_base, 0) + valor
+    return resultado
 
 
 def calcular_nota(roi_total, multiplo_capital, aporte_sobre_valor, anos_entrega):
     nota = 0
-    if roi_total >= 100: nota += 30
-    elif roi_total >= 70: nota += 25
-    elif roi_total >= 50: nota += 20
-    elif roi_total >= 30: nota += 13
-    elif roi_total >= 15: nota += 8
 
-    if multiplo_capital >= 2.0: nota += 30
-    elif multiplo_capital >= 1.7: nota += 25
-    elif multiplo_capital >= 1.4: nota += 20
-    elif multiplo_capital >= 1.2: nota += 12
-    elif multiplo_capital >= 1.0: nota += 7
+    if roi_total >= 100:
+        nota += 30
+    elif roi_total >= 70:
+        nota += 25
+    elif roi_total >= 50:
+        nota += 20
+    elif roi_total >= 30:
+        nota += 13
+    elif roi_total >= 15:
+        nota += 8
 
-    if aporte_sobre_valor <= 35: nota += 20
-    elif aporte_sobre_valor <= 50: nota += 15
-    elif aporte_sobre_valor <= 70: nota += 10
-    else: nota += 5
+    if multiplo_capital >= 2.0:
+        nota += 30
+    elif multiplo_capital >= 1.7:
+        nota += 25
+    elif multiplo_capital >= 1.4:
+        nota += 20
+    elif multiplo_capital >= 1.2:
+        nota += 12
+    elif multiplo_capital >= 1.0:
+        nota += 7
 
-    if anos_entrega <= 2: nota += 20
-    elif anos_entrega <= 3: nota += 15
-    elif anos_entrega <= 5: nota += 10
-    else: nota += 5
+    if aporte_sobre_valor <= 35:
+        nota += 20
+    elif aporte_sobre_valor <= 50:
+        nota += 15
+    elif aporte_sobre_valor <= 70:
+        nota += 10
+    else:
+        nota += 5
+
+    if anos_entrega <= 2:
+        nota += 20
+    elif anos_entrega <= 3:
+        nota += 15
+    elif anos_entrega <= 5:
+        nota += 10
+    else:
+        nota += 5
 
     return min(round(nota), 100)
+
 
 def classificar(nota):
     if nota >= 85:
@@ -307,6 +345,7 @@ def classificar(nota):
         return "ACEITÁVEL"
     return "FRACO"
 
+
 def leitura_rapida(nota):
     if nota >= 85:
         return "Excelente potencial de retorno com boa multiplicação do capital e relação risco/retorno atrativa."
@@ -315,6 +354,7 @@ def leitura_rapida(nota):
     if nota >= 55:
         return "Operação aceitável, mas exige atenção ao fluxo, prazo, reajustes e valorização real."
     return "Operação fraca ou arriscada. O retorno projetado pode não compensar o capital imobilizado."
+
 
 def card(titulo, icone, valor, subtitulo, pill, cor="blue", fundo=""):
     bg_class = f" {fundo}" if fundo else ""
@@ -328,9 +368,7 @@ def card(titulo, icone, valor, subtitulo, pill, cor="blue", fundo=""):
     </div>
     """, unsafe_allow_html=True)
 
-# =============================
-# CABEÇALHO
-# =============================
+
 st.markdown("""
 <div class="hero">
     <h1>🏢 Investidor Imobiliário PRO</h1>
@@ -338,9 +376,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# =============================
-# SIDEBAR
-# =============================
+
 st.sidebar.header("⚙️ Parâmetros")
 
 valor_imovel = st.sidebar.number_input("Valor atual do imóvel", min_value=0.0, value=1300000.0, step=10000.0)
@@ -351,20 +387,20 @@ mes_entrega = st.sidebar.number_input("Mês de entrega do empreendimento", min_v
 
 st.sidebar.subheader("📌 Reforços antes da entrega")
 reforcos_antes_texto = st.sidebar.text_area(
-    "Meses recorrentes antes da entrega — formato: mês=valor",
-    value="6=40000
-10=40000",
+    "Meses recorrentes antes da entrega — mês=valor",
+    value="""6=40000
+10=40000""",
     height=120,
-    help="Exemplo: 6=40000 e 10=40000 aplica nos meses 6, 10, 18, 22, 30, 34... até a entrega. Se quiser um mês absoluto, use número maior que 12."
+    help="Exemplo: 6=40000 e 10=40000 aplica nos meses 6, 10, 18, 22, 30, 34... até a entrega."
 )
 
 st.sidebar.subheader("🏗️ Reforços depois da entrega")
 reforcos_depois_texto = st.sidebar.text_area(
-    "Meses recorrentes depois da entrega — formato: mês=valor",
-    value="6=50000
-10=50000",
+    "Meses recorrentes depois da entrega — mês=valor",
+    value="""6=50000
+10=50000""",
     height=100,
-    help="Exemplo: se a entrega é no mês 48, 6=50000 e 10=50000 aplica nos meses 54, 58, 66, 70... até o fim do prazo."
+    help="Exemplo: se a entrega é no mês 48, 6=50000 e 10=50000 aplica nos meses 54, 58, 66, 70... até o final."
 )
 
 valorizacao_anual = st.sidebar.slider("Valorização anual estimada", 0.0, 30.0, 15.0, 0.5) / 100
@@ -374,26 +410,28 @@ metragem = st.sidebar.number_input("Metragem privativa m²", min_value=1.0, valu
 
 reforcos_antes_base = ler_reforcos(reforcos_antes_texto)
 reforcos_depois_base = ler_reforcos(reforcos_depois_texto)
-reforcos_antes_dict = expandir_reforcos_antes_entrega(reforcos_antes_base, int(mes_entrega))
-reforcos_depois_dict = expandir_reforcos_depois_entrega(reforcos_depois_base, int(mes_entrega), int(prazo_meses))
+
+reforcos_antes_dict = expandir_reforcos_antes(reforcos_antes_base, int(mes_entrega))
+reforcos_depois_dict = expandir_reforcos_depois(reforcos_depois_base, int(mes_entrega), int(prazo_meses))
+
 anos_entrega = max(mes_entrega / 12, 1)
 valor_m2 = valor_imovel / metragem if metragem > 0 else 0
 
-# =============================
-# CÁLCULOS
-# =============================
+
 linhas_mes = []
 linhas_ano = []
 
 for mes in range(1, int(prazo_meses) + 1):
     ano_corrente = ((mes - 1) // 12) + 1
     reajuste = (1 + cub_anual) ** ((mes - 1) / 12)
+
     parcela_corrigida = parcela_mensal * reajuste
     reforco_antes = reforcos_antes_dict.get(mes, 0) * reajuste
     reforco_depois = reforcos_depois_dict.get(mes, 0) * reajuste
     reforco_total = reforco_antes + reforco_depois
 
     aporte_mes = parcela_corrigida + reforco_total
+
     if mes == 1:
         aporte_mes += entrada
 
@@ -424,27 +462,31 @@ for ano in range(1, anos_analise + 1):
     meses_ate_ano = min(ano * 12, int(prazo_meses))
     dados_ate_ano = [x for x in linhas_mes if x["Mês"] <= meses_ate_ano]
     dados_do_ano = [x for x in linhas_mes if x["Ano"] == ano]
+
     if not dados_ate_ano:
         continue
-    ultimo = dados_ate_ano[-1]
+
+    ultimo_ano = dados_ate_ano[-1]
+
     linhas_ano.append({
         "Ano": ano,
         "Aporte no ano": sum([x["Aporte do mês"] for x in dados_do_ano]),
         "Reforços antes da entrega": sum([x["Reforço antes da entrega"] for x in dados_do_ano]),
         "Reforços depois da entrega": sum([x["Reforço depois da entrega"] for x in dados_do_ano]),
         "Reforços totais": sum([x["Reforço total"] for x in dados_do_ano]),
-        "Aporte acumulado": ultimo["Aporte acumulado"],
-        "Valor estimado do imóvel": ultimo["Valor estimado do imóvel"],
-        "Lucro bruto": ultimo["Lucro bruto"],
-        "💰 Retorno total na venda": ultimo["💰 Dinheiro na mão"],
-        "Múltiplo do capital": ultimo["Múltiplo"],
-        "ROI acumulado": ultimo["ROI"]
+        "Aporte acumulado": ultimo_ano["Aporte acumulado"],
+        "Valor estimado do imóvel": ultimo_ano["Valor estimado do imóvel"],
+        "Lucro bruto": ultimo_ano["Lucro bruto"],
+        "💰 Retorno total na venda": ultimo_ano["💰 Dinheiro na mão"],
+        "Múltiplo do capital": ultimo_ano["Múltiplo"],
+        "ROI acumulado": ultimo_ano["ROI"]
     })
 
 df_mes = pd.DataFrame(linhas_mes)
 df_ano = pd.DataFrame(linhas_ano)
 
 ultimo = df_ano.iloc[-1]
+
 aporte_final = ultimo["Aporte acumulado"]
 valor_final = ultimo["Valor estimado do imóvel"]
 lucro_final = ultimo["Lucro bruto"]
@@ -454,12 +496,11 @@ multiplo_final = ultimo["Múltiplo do capital"]
 valorizacao_total = ((valor_final / valor_imovel) - 1) * 100 if valor_imovel > 0 else 0
 aporte_sobre_valor = (aporte_final / valor_imovel) * 100 if valor_imovel > 0 else 0
 fluxo_medio_mes = aporte_final / max(anos_analise * 12, 1)
+
 nota = calcular_nota(roi_final, multiplo_final, aporte_sobre_valor, anos_entrega)
 classificacao = classificar(nota)
 
-# =============================
-# ABAS
-# =============================
+
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 Painel executivo",
     "📆 Fluxo mensal",
@@ -486,6 +527,7 @@ with tab1:
 
     with col_cards:
         c1, c2, c3, c4 = st.columns(4)
+
         with c1:
             card("Investido no fluxo", "$", moeda(aporte_final), "Total aportado", "Capital imobilizado", "blue")
         with c2:
@@ -496,6 +538,7 @@ with tab1:
             card("ROI real", "🎯", percentual(roi_final), "Retorno sobre o capital", "Total do investimento", "orange", "orange-bg")
 
         c5, c6, c7, c8 = st.columns(4)
+
         with c5:
             card("Valor inicial do imóvel", "🏠", moeda(valor_imovel), "Valor atual hoje", "Base inicial", "blue")
         with c6:
@@ -510,10 +553,22 @@ with tab1:
     st.markdown('<div class="section-subtitle">Projeção de aportes, reforços personalizados, valorização e retorno total na venda.</div>', unsafe_allow_html=True)
 
     df_show = df_ano.copy()
-    for col in ["Aporte no ano", "Reforços antes da entrega", "Reforços depois da entrega", "Reforços totais", "Aporte acumulado", "Valor estimado do imóvel", "Lucro bruto", "💰 Retorno total na venda"]:
+
+    for col in [
+        "Aporte no ano",
+        "Reforços antes da entrega",
+        "Reforços depois da entrega",
+        "Reforços totais",
+        "Aporte acumulado",
+        "Valor estimado do imóvel",
+        "Lucro bruto",
+        "💰 Retorno total na venda"
+    ]:
         df_show[col] = df_show[col].apply(moeda)
+
     df_show["Múltiplo do capital"] = df_show["Múltiplo do capital"].apply(lambda x: f"{x:.2f}x")
     df_show["ROI acumulado"] = df_show["ROI acumulado"].apply(percentual)
+
     st.dataframe(df_show, width="stretch", hide_index=True, height=280)
 
     st.markdown(f"""
@@ -525,23 +580,50 @@ with tab1:
                 Lucro bruto de <b style="color:#087a20;">{moeda(lucro_final)}</b> com valorização de <b>{percentual(valorizacao_total)}</b>.
             </div>
         </div>
-        <div class="summary-metric"><div class="summary-value">{moeda(dinheiro_mao_final)}</div><div class="summary-label">Retorno total</div></div>
-        <div class="summary-metric"><div class="summary-value">{moeda(lucro_final)}</div><div class="summary-label">Lucro bruto</div></div>
-        <div class="summary-metric"><div class="summary-value">{multiplo_final:.2f}x</div><div class="summary-label">Múltiplo do capital</div></div>
-        <div class="summary-metric"><div class="summary-value">{percentual(roi_final)}</div><div class="summary-label">ROI total</div></div>
+        <div class="summary-metric">
+            <div class="summary-value">{moeda(dinheiro_mao_final)}</div>
+            <div class="summary-label">Retorno total</div>
+        </div>
+        <div class="summary-metric">
+            <div class="summary-value">{moeda(lucro_final)}</div>
+            <div class="summary-label">Lucro bruto</div>
+        </div>
+        <div class="summary-metric">
+            <div class="summary-value">{multiplo_final:.2f}x</div>
+            <div class="summary-label">Múltiplo do capital</div>
+        </div>
+        <div class="summary-metric">
+            <div class="summary-value">{percentual(roi_final)}</div>
+            <div class="summary-label">ROI total</div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
+
     st.markdown('</div>', unsafe_allow_html=True)
 
 with tab2:
     st.markdown('<div class="section-box">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">📆 Fluxo mensal</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-subtitle">Acompanhamento mês a mês do desembolso, reforços, valorização e retorno estimado.</div>', unsafe_allow_html=True)
+
     dfm = df_mes.copy()
-    for col in ["Parcela corrigida", "Reforço antes da entrega", "Reforço depois da entrega", "Reforço total", "Aporte do mês", "Aporte acumulado", "Valor estimado do imóvel", "Lucro bruto", "💰 Dinheiro na mão"]:
+
+    for col in [
+        "Parcela corrigida",
+        "Reforço antes da entrega",
+        "Reforço depois da entrega",
+        "Reforço total",
+        "Aporte do mês",
+        "Aporte acumulado",
+        "Valor estimado do imóvel",
+        "Lucro bruto",
+        "💰 Dinheiro na mão"
+    ]:
         dfm[col] = dfm[col].apply(moeda)
+
     dfm["Múltiplo"] = dfm["Múltiplo"].apply(lambda x: f"{x:.2f}x")
     dfm["ROI"] = dfm["ROI"].apply(percentual)
+
     st.dataframe(dfm, width="stretch", hide_index=True, height=520)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -549,49 +631,79 @@ with tab3:
     st.markdown('<div class="section-box">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">🗓️ Ano a ano</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-subtitle">Resumo anual para comparar o melhor momento de saída.</div>', unsafe_allow_html=True)
+
     dfa = df_ano.copy()
-    for col in ["Aporte no ano", "Reforços antes da entrega", "Reforços depois da entrega", "Reforços totais", "Aporte acumulado", "Valor estimado do imóvel", "Lucro bruto", "💰 Retorno total na venda"]:
+
+    for col in [
+        "Aporte no ano",
+        "Reforços antes da entrega",
+        "Reforços depois da entrega",
+        "Reforços totais",
+        "Aporte acumulado",
+        "Valor estimado do imóvel",
+        "Lucro bruto",
+        "💰 Retorno total na venda"
+    ]:
         dfa[col] = dfa[col].apply(moeda)
+
     dfa["Múltiplo do capital"] = dfa["Múltiplo do capital"].apply(lambda x: f"{x:.2f}x")
     dfa["ROI acumulado"] = dfa["ROI acumulado"].apply(percentual)
+
     st.dataframe(dfa, width="stretch", hide_index=True, height=420)
     st.markdown('</div>', unsafe_allow_html=True)
 
 with tab4:
     st.markdown('<div class="section-box">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">✅ Critérios de avaliação</div>', unsafe_allow_html=True)
+
     st.write("**Nota final:**", f"{nota}/100 — {classificacao}")
     st.progress(min(nota / 100, 1.0), text=f"Nota geral: {nota}/100")
     st.progress(min(roi_final / 200, 1.0), text=f"ROI: {percentual(roi_final)}")
     st.progress(min(multiplo_final / 3, 1.0), text=f"Múltiplo do capital: {multiplo_final:.2f}x")
     st.progress(min((100 - aporte_sobre_valor) / 100, 1.0), text=f"Capital imobilizado: {percentual(aporte_sobre_valor)} do valor do imóvel")
+
     st.write("**Comentário:**")
-    st.write("O ponto central da análise é considerar o retorno total como capital aportado + lucro da valorização. Esse é o dinheiro estimado que volta para sua mão na venda.")
+    st.write("O retorno total considera capital aportado + lucro da valorização. Esse é o dinheiro estimado que volta para sua mão na venda.")
+
     st.markdown('</div>', unsafe_allow_html=True)
 
 with tab5:
     st.markdown('<div class="section-box">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">📝 Dados variáveis usados na simulação</div>', unsafe_allow_html=True)
-    reforcos_antes_formatados = ", ".join([f"Mês {m}: {moeda(v)}" for m, v in sorted(reforcos_antes_dict.items())]) if reforcos_antes_dict else "Nenhum"
-    reforcos_depois_formatados = ", ".join([f"Mês {m}: {moeda(v)}" for m, v in sorted(reforcos_depois_dict.items())]) if reforcos_depois_dict else "Nenhum"
-    reforcos_antes_base_formatados = ", ".join([f"Mês {m}: {moeda(v)}" for m, v in sorted(reforcos_antes_base.items())]) if reforcos_antes_base else "Nenhum"
-    reforcos_depois_base_formatados = ", ".join([f"Mês {m}: {moeda(v)}" for m, v in sorted(reforcos_depois_base.items())]) if reforcos_depois_base else "Nenhum"
+
+    reforcos_antes_base_formatados = ", ".join(
+        [f"Mês {m}: {moeda(v)}" for m, v in sorted(reforcos_antes_base.items())]
+    ) if reforcos_antes_base else "Nenhum"
+
+    reforcos_depois_base_formatados = ", ".join(
+        [f"Mês {m}: {moeda(v)}" for m, v in sorted(reforcos_depois_base.items())]
+    ) if reforcos_depois_base else "Nenhum"
+
+    reforcos_antes_aplicados = ", ".join(
+        [f"Mês {m}: {moeda(v)}" for m, v in sorted(reforcos_antes_dict.items())]
+    ) if reforcos_antes_dict else "Nenhum"
+
+    reforcos_depois_aplicados = ", ".join(
+        [f"Mês {m}: {moeda(v)}" for m, v in sorted(reforcos_depois_dict.items())]
+    ) if reforcos_depois_dict else "Nenhum"
+
     dados = pd.DataFrame([
         ["Valor atual do imóvel", moeda(valor_imovel)],
         ["Entrada", moeda(entrada)],
         ["Parcela mensal inicial", moeda(parcela_mensal)],
         ["Prazo total", f"{prazo_meses} meses"],
         ["Mês de entrega", f"{mes_entrega}"],
-        ["Reforços antes da entrega informados", reforcos_antes_base_formatados],
-        ["Reforços antes da entrega aplicados", reforcos_antes_formatados],
-        ["Reforços depois da entrega informados", reforcos_depois_base_formatados],
-        ["Reforços depois da entrega aplicados", reforcos_depois_formatados],
+        ["Reforços antes informados", reforcos_antes_base_formatados],
+        ["Reforços antes aplicados", reforcos_antes_aplicados],
+        ["Reforços depois informados", reforcos_depois_base_formatados],
+        ["Reforços depois aplicados", reforcos_depois_aplicados],
         ["Valorização anual", percentual(valorizacao_anual * 100)],
         ["CUB/INCC anual", percentual(cub_anual * 100)],
         ["Anos de análise", f"{anos_analise}"],
         ["Metragem", f"{metragem:.0f} m²"],
         ["Valor por m²", moeda(valor_m2)],
     ], columns=["Campo", "Valor"])
+
     st.dataframe(dados, width="stretch", hide_index=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
