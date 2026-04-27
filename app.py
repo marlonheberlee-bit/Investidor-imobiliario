@@ -1,501 +1,607 @@
-
 import streamlit as st
 import pandas as pd
-import numpy as np
-import math
+from datetime import datetime
 
-st.set_page_config(page_title="Investidor Imobiliário PRO", page_icon="🏢", layout="wide")
+st.set_page_config(
+    page_title="Analisador Imobiliário V8.1",
+    page_icon="🏢",
+    layout="wide"
+)
+
+# =============================
+# CSS VISUAL PROFISSIONAL
+# =============================
 
 st.markdown("""
 <style>
-.block-container {padding-top: 1.2rem;}
-.hero {
-    background: linear-gradient(135deg, #111827 0%, #1f2937 60%, #374151 100%);
-    padding: 28px 32px;
-    border-radius: 22px;
-    color: white;
-    margin-bottom: 22px;
-    box-shadow: 0 10px 28px rgba(0,0,0,0.12);
-}
-.hero h1 {margin: 0; font-size: 34px; font-weight: 800;}
-.hero p {margin-top: 8px; color: #d1d5db; font-size: 16px;}
-.card {
-    background: white;
-    padding: 22px;
-    border-radius: 18px;
-    box-shadow: 0 6px 20px rgba(15,23,42,0.07);
-    border: 1px solid #e5e7eb;
-    margin-bottom: 16px;
-}
-.section-title {color: #111827; font-size: 22px; font-weight: 800; margin-bottom: 12px;}
-.grade {
-    padding: 20px;
-    border-radius: 18px;
-    font-weight: 800;
-    margin-bottom: 16px;
-}
-.otimo {background: #dcfce7; color: #166534; border: 1px solid #86efac;}
-.bom {background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd;}
-.regular {background: #fef3c7; color: #92400e; border: 1px solid #fcd34d;}
-.pessimo {background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5;}
-div[data-testid="stMetric"] {
-    background: white;
-    padding: 16px;
-    border-radius: 16px;
-    border: 1px solid #e5e7eb;
-    box-shadow: 0 5px 15px rgba(15,23,42,0.06);
-}
+    .block-container {
+        padding-top: 1.2rem;
+        padding-bottom: 2rem;
+        max-width: 1500px;
+    }
+
+    .main-title {
+        font-size: 34px;
+        font-weight: 800;
+        color: #0f172a;
+        margin-bottom: 0px;
+    }
+
+    .subtitle {
+        color: #64748b;
+        font-size: 15px;
+        margin-bottom: 22px;
+    }
+
+    .tabs-bar {
+        display: flex;
+        gap: 26px;
+        padding: 12px 8px 14px 8px;
+        border-bottom: 1px solid #e5e7eb;
+        margin-bottom: 18px;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .tab-active {
+        color: #1d4ed8;
+        border-bottom: 3px solid #1d4ed8;
+        padding-bottom: 12px;
+    }
+
+    .hero-grid {
+        display: grid;
+        grid-template-columns: 1.1fr 3fr;
+        gap: 18px;
+        margin-bottom: 18px;
+    }
+
+    .classification-card {
+        background: linear-gradient(145deg, #073ec7, #0057ff);
+        border-radius: 22px;
+        padding: 30px;
+        color: white;
+        min-height: 405px;
+        box-shadow: 0 14px 35px rgba(37, 99, 235, 0.25);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    .classification-card .label {
+        font-size: 15px;
+        font-weight: 800;
+        letter-spacing: .5px;
+        opacity: .95;
+    }
+
+    .classification-card .grade {
+        font-size: 68px;
+        font-weight: 900;
+        line-height: 1;
+        margin: 20px 0 10px 0;
+    }
+
+    .classification-card .score {
+        display: inline-block;
+        background: rgba(15, 23, 42, 0.22);
+        padding: 9px 16px;
+        border-radius: 999px;
+        font-size: 20px;
+        font-weight: 800;
+    }
+
+    .quick-reading {
+        background: rgba(15, 23, 42, 0.20);
+        border-radius: 18px;
+        padding: 20px;
+        margin-top: 22px;
+    }
+
+    .quick-title {
+        font-size: 18px;
+        font-weight: 800;
+        margin-bottom: 10px;
+    }
+
+    .quick-text {
+        font-size: 15px;
+        line-height: 1.55;
+        opacity: .96;
+    }
+
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+    }
+
+    .kpi-card {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 18px;
+        padding: 24px 18px;
+        text-align: center;
+        min-height: 190px;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+    }
+
+    .kpi-icon {
+        width: 58px;
+        height: 58px;
+        border-radius: 999px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 14px auto;
+        font-size: 28px;
+        background: #dbeafe;
+    }
+
+    .kpi-title {
+        color: #0f172a;
+        font-size: 15px;
+        font-weight: 800;
+        margin-bottom: 10px;
+        white-space: normal;
+    }
+
+    .kpi-value {
+        font-size: 30px;
+        font-weight: 900;
+        line-height: 1.1;
+        margin-bottom: 8px;
+        white-space: nowrap;
+    }
+
+    .kpi-sub {
+        color: #64748b;
+        font-size: 14px;
+        min-height: 18px;
+    }
+
+    .pill {
+        display: inline-block;
+        margin-top: 9px;
+        font-size: 13px;
+        font-weight: 800;
+        padding: 6px 10px;
+        border-radius: 8px;
+    }
+
+    .blue { color: #0b4ad9; }
+    .green { color: #087a20; }
+    .purple { color: #5b21b6; }
+    .orange { color: #ea580c; }
+    .pill-blue { background: #dbeafe; color: #0b4ad9; }
+    .pill-green { background: #dcfce7; color: #087a20; }
+    .pill-purple { background: #ede9fe; color: #5b21b6; }
+    .pill-orange { background: #ffedd5; color: #ea580c; }
+
+    .section-card {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 18px;
+        padding: 22px;
+        margin-top: 18px;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+    }
+
+    .section-title {
+        color: #0b4ad9;
+        font-size: 18px;
+        font-weight: 900;
+        margin-bottom: 2px;
+    }
+
+    .section-subtitle {
+        color: #64748b;
+        font-size: 14px;
+        margin-bottom: 18px;
+    }
+
+    .summary-box {
+        background: linear-gradient(90deg, #f0fdf4, #ffffff);
+        border: 1px solid #86efac;
+        border-radius: 18px;
+        padding: 24px;
+        display: grid;
+        grid-template-columns: 1.6fr repeat(4, 1fr);
+        gap: 16px;
+        align-items: center;
+        margin-top: 20px;
+    }
+
+    .summary-title {
+        color: #087a20;
+        font-weight: 900;
+        font-size: 17px;
+        margin-bottom: 8px;
+    }
+
+    .summary-text {
+        color: #0f172a;
+        font-size: 15px;
+        line-height: 1.55;
+    }
+
+    .summary-metric {
+        text-align: center;
+        border-left: 1px solid #d1fae5;
+        padding-left: 14px;
+    }
+
+    .summary-metric-value {
+        color: #087a20;
+        font-size: 24px;
+        font-weight: 900;
+        white-space: nowrap;
+    }
+
+    .summary-metric-label {
+        color: #475569;
+        font-size: 13px;
+        margin-top: 6px;
+    }
+
+    .warning-box {
+        margin-top: 16px;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        color: #334155;
+        padding: 12px 16px;
+        border-radius: 12px;
+        font-size: 13px;
+    }
+
+    @media (max-width: 1100px) {
+        .hero-grid { grid-template-columns: 1fr; }
+        .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .summary-box { grid-template-columns: 1fr; }
+        .summary-metric { border-left: none; border-top: 1px solid #d1fae5; padding-top: 12px; }
+    }
 </style>
 """, unsafe_allow_html=True)
 
-def moeda(v):
-    return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+# =============================
+# FUNÇÕES
+# =============================
 
-def pct(v):
-    return f"{v:.2f}%".replace(".", ",")
+def moeda(valor):
+    if pd.isna(valor) or valor is None:
+        return "R$ 0"
+    return f"R$ {valor:,.0f}".replace(",", ".")
 
-def nota_css(n):
-    return {"ÓTIMO":"otimo","BOM":"bom","REGULAR":"regular","PÉSSIMO":"pessimo"}.get(n, "regular")
 
-def classificar_fluxo_valorizacao(investido, valor_inicial, valor_final, fluxo_medio):
-    """
-    Nota baseada apenas em fluxo de pagamento x valorização do imóvel.
-    Não usa banco, CDI, ROI financeiro ou custo de oportunidade.
-    """
-    valorizacao_reais = valor_final - valor_inicial
-    valorizacao_pct = (valorizacao_reais / valor_inicial * 100) if valor_inicial > 0 else 0
-    alavancagem_valorizacao = (valorizacao_reais / investido * 100) if investido > 0 else 0
-    fluxo_pct_imovel = (fluxo_medio / valor_inicial * 100) if valor_inicial > 0 else 0
-    cobertura_valorizacao = (valor_final / investido) if investido > 0 else 0
+def percentual(valor):
+    if pd.isna(valor) or valor is None:
+        return "0,00%"
+    return f"{valor:.2f}%".replace(".", ",")
 
-    score = 0
 
-    # 1) Quanto a valorização representa sobre o dinheiro colocado
-    # Ex: colocou 100 mil e valorizou 150 mil = 150%, muito forte.
-    if alavancagem_valorizacao >= 150:
-        score += 45
-    elif alavancagem_valorizacao >= 100:
-        score += 38
-    elif alavancagem_valorizacao >= 70:
-        score += 30
-    elif alavancagem_valorizacao >= 40:
-        score += 20
-    elif alavancagem_valorizacao >= 20:
-        score += 10
+def calcular_nota(roi_total, multiplo_capital, aporte_sobre_valor, anos_entrega):
+    nota = 0
+
+    if roi_total >= 100:
+        nota += 30
+    elif roi_total >= 70:
+        nota += 25
+    elif roi_total >= 50:
+        nota += 20
+    elif roi_total >= 30:
+        nota += 13
+    elif roi_total >= 15:
+        nota += 8
+
+    if multiplo_capital >= 2.0:
+        nota += 30
+    elif multiplo_capital >= 1.7:
+        nota += 25
+    elif multiplo_capital >= 1.4:
+        nota += 20
+    elif multiplo_capital >= 1.2:
+        nota += 12
+    elif multiplo_capital >= 1.0:
+        nota += 7
+
+    if aporte_sobre_valor <= 35:
+        nota += 20
+    elif aporte_sobre_valor <= 50:
+        nota += 15
+    elif aporte_sobre_valor <= 70:
+        nota += 10
     else:
-        score += 3
+        nota += 5
 
-    # 2) Fluxo leve: quanto menor o fluxo médio mensal sobre o valor do imóvel, melhor.
-    if fluxo_pct_imovel <= 0.25:
-        score += 30
-    elif fluxo_pct_imovel <= 0.40:
-        score += 24
-    elif fluxo_pct_imovel <= 0.60:
-        score += 16
-    elif fluxo_pct_imovel <= 0.85:
-        score += 8
+    if anos_entrega <= 2:
+        nota += 20
+    elif anos_entrega <= 3:
+        nota += 15
+    elif anos_entrega <= 5:
+        nota += 10
     else:
-        score += 3
+        nota += 5
 
-    # 3) Valorização percentual do imóvel no período.
-    if valorizacao_pct >= 50:
-        score += 25
-    elif valorizacao_pct >= 35:
-        score += 20
-    elif valorizacao_pct >= 25:
-        score += 15
-    elif valorizacao_pct >= 15:
-        score += 9
-    elif valorizacao_pct >= 8:
-        score += 5
-    else:
-        score += 1
+    return min(round(nota), 100)
 
-    score = max(0, min(100, score))
 
-    if score >= 80:
-        nota = "ÓTIMO"
-        leitura = "Excelente relação entre baixo fluxo e valorização. O imóvel valorizou muito em comparação ao dinheiro colocado."
-    elif score >= 65:
-        nota = "BOM"
-        leitura = "Boa relação entre fluxo e valorização. O dinheiro colocado está sendo bem alavancado pela valorização do imóvel."
-    elif score >= 45:
-        nota = "REGULAR"
-        leitura = "A valorização existe, mas não é tão forte diante do fluxo de pagamento exigido."
-    else:
-        nota = "PÉSSIMO"
-        leitura = "A valorização projetada não compensa bem o fluxo de pagamento exigido."
+def classificar_nota(nota):
+    if nota >= 85:
+        return "EXCELENTE"
+    elif nota >= 70:
+        return "BOM"
+    elif nota >= 55:
+        return "ACEITÁVEL"
+    return "FRACO"
 
-    return score, nota, leitura, valorizacao_reais, valorizacao_pct, alavancagem_valorizacao, fluxo_pct_imovel, cobertura_valorizacao
 
-def fator_cub_acumulado(cub_lista, mes):
-    if mes <= 1:
-        return 1.0
-    return float(np.prod(1 + cub_lista[:mes-1]))
+def leitura_rapida(nota, multiplo, roi):
+    if nota >= 85:
+        return "Excelente potencial de retorno, boa multiplicação do capital e relação risco/retorno muito atrativa."
+    if nota >= 70:
+        return "Bom potencial de retorno, com capital bem aproveitado e resultado projetado interessante."
+    if nota >= 55:
+        return "Operação aceitável, mas exige atenção ao fluxo, prazo, reajustes e velocidade real de valorização."
+    return "Operação fraca ou arriscada. O retorno projetado pode não compensar o capital imobilizado."
 
-def montar_reforcos(prazo, tipo_reforco, valor_reforco, cub_lista, mes_entrega, aumento_pos_entrega_pct, reforcos_custom, padrao_custom):
-    reforcos = np.zeros(prazo)
+# =============================
+# CABEÇALHO
+# =============================
 
-    def aplicar(mes, valor_base, aplicar_aumento=True):
-        if 1 <= mes <= prazo:
-            valor = valor_base * fator_cub_acumulado(cub_lista, mes)
-            if aplicar_aumento and mes >= mes_entrega:
-                valor *= (1 + aumento_pos_entrega_pct / 100)
-            reforcos[mes-1] += valor
-
-    if tipo_reforco == "Sem reforços":
-        return reforcos
-
-    if tipo_reforco == "Semestral fixo":
-        for mes in range(6, prazo + 1, 6):
-            aplicar(mes, valor_reforco)
-
-    elif tipo_reforco == "Anual fixo":
-        for mes in range(12, prazo + 1, 12):
-            aplicar(mes, valor_reforco)
-
-    elif tipo_reforco == "Meses-base recorrentes":
-        if reforcos_custom is not None and not reforcos_custom.empty:
-            for _, row in reforcos_custom.dropna().iterrows():
-                mes_base = int(row.get("Mês base", 0) or 0)
-                valor_base = float(row.get("Valor base", 0) or 0)
-                if 1 <= mes_base <= 12 and valor_base > 0:
-                    mes = mes_base
-                    while mes <= prazo:
-                        aplicar(mes, valor_base)
-                        mes += 12
-
-    elif tipo_reforco == "Variável por mês":
-        if reforcos_custom is not None and not reforcos_custom.empty:
-            for _, row in reforcos_custom.dropna().iterrows():
-                mes = int(row.get("Mês", 0) or 0)
-                valor_base = float(row.get("Valor", 0) or 0)
-                aplicar(mes, valor_base)
-
-    elif tipo_reforco == "Variável recorrente por fase":
-        if padrao_custom is not None and not padrao_custom.empty:
-            for _, row in padrao_custom.dropna().iterrows():
-                fase = str(row.get("Fase", "Antes da entrega"))
-                mes_base = int(row.get("Mês base", 0) or 0)
-                valor_base = float(row.get("Valor base", 0) or 0)
-                if 1 <= mes_base <= 12 and valor_base > 0:
-                    mes = mes_base
-                    while mes <= prazo:
-                        if fase == "Antes da entrega" and mes < mes_entrega:
-                            aplicar(mes, valor_base, aplicar_aumento=False)
-                        elif fase == "Depois da entrega" and mes >= mes_entrega:
-                            aplicar(mes, valor_base, aplicar_aumento=False)
-                        mes += 12
-
-    return reforcos
+st.markdown('<div class="main-title">🏢 Analisador Imobiliário Profissional V8.1</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Painel executivo com foco em dinheiro na mão, valorização, aporte, ROI e decisão de investimento.</div>', unsafe_allow_html=True)
 
 st.markdown("""
-<div class="hero">
-<h1>🏢 Investidor Imobiliário PRO</h1>
-<p>Simulador profissional de saída: fluxo, CUB, saldo futuro, dinheiro na mão, lucro real e ponto ideal de venda.</p>
+<div class="tabs-bar">
+    <span class="tab-active">📊 Painel executivo</span>
+    <span>📆 Fluxo mensal</span>
+    <span>🗓️ Ano a ano</span>
+    <span>✅ Critérios</span>
+    <span>📝 Dados variáveis</span>
 </div>
 """, unsafe_allow_html=True)
 
-with st.sidebar:
-    st.header("⚙️ Parâmetros")
-    valor_imovel = st.number_input("Valor atual do imóvel", min_value=0.0, value=1300000.0, step=10000.0)
-    entrada = st.number_input("Entrada / sinal", min_value=0.0, value=25000.0, step=1000.0)
-    parcela_inicial = st.number_input("Parcela mensal inicial", min_value=0.0, value=2500.0, step=100.0)
-    prazo = int(st.number_input("Prazo total em meses", min_value=1, max_value=240, value=120, step=1))
-    mes_entrega = int(st.number_input("Mês de entrega do empreendimento", min_value=1, max_value=prazo, value=min(48, prazo), step=1))
+# =============================
+# ENTRADAS EM EXPANDER
+# =============================
 
-    st.divider()
-    modo_cub = st.radio("Modo de reajuste CUB", ["CUB anual estimado", "CUB mensal fixo", "CUB mensal variável"])
-    cub_anual = st.number_input("CUB anual estimado (%)", min_value=0.0, max_value=30.0, value=4.3, step=0.1)
-    cub_mensal = st.number_input("CUB mensal base (%)", min_value=-5.0, max_value=10.0, value=0.35, step=0.01)
+with st.expander("📝 Dados variáveis do empreendimento", expanded=True):
+    col1, col2, col3 = st.columns(3)
 
-    st.divider()
-    valorizacao_conservadora = st.number_input("Valorização conservadora (% a.a.)", min_value=-20.0, max_value=50.0, value=7.0, step=0.5)
-    valorizacao_base = st.number_input("Valorização base (% a.a.)", min_value=-20.0, max_value=50.0, value=10.0, step=0.5)
-    valorizacao_otimista = st.number_input("Valorização otimista (% a.a.)", min_value=-20.0, max_value=50.0, value=15.0, step=0.5)
-    cenario_nota = st.selectbox("Cenário usado na nota", ["Conservador", "Base", "Otimista"])
+    with col1:
+        nome = st.text_input("Nome do empreendimento", "Empreendimento Exemplo")
+        localizacao = st.text_input("Localização", "Porto Belo / SC")
+        valor_imovel = st.number_input("Valor atual do imóvel", min_value=0.0, value=1200000.0, step=10000.0)
+        metragem = st.number_input("Metragem privativa m²", min_value=0.0, value=90.0, step=1.0)
 
-    st.divider()
-    mes_venda = int(st.number_input("Mês em que pretende avaliar/vender", min_value=1, max_value=prazo, value=min(60, prazo), step=1))
-    custo_venda_pct = st.number_input("Custos venda/comissão/impostos (%)", min_value=0.0, max_value=30.0, value=6.0, step=0.5)
-    desconto_liquidez_pct = st.number_input("Desconto para vender rápido (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.5)
+    with col2:
+        ano_atual = datetime.now().year
+        ano_entrega = st.number_input("Ano de entrega", min_value=ano_atual, max_value=2045, value=2030, step=1)
+        valorizacao_anual = st.slider("Valorização anual estimada", 0.0, 30.0, 15.0, 0.5) / 100
+        cub_anual = st.slider("Reajuste anual estimado CUB/INCC", 0.0, 15.0, 4.3, 0.1) / 100
+        anos_analise = st.slider("Anos para simulação", 1, 10, 5)
 
-    st.divider()
-    tipo_reforco = st.selectbox("Tipo de reforço", ["Sem reforços", "Semestral fixo", "Anual fixo", "Meses-base recorrentes", "Variável por mês", "Variável recorrente por fase"])
-    valor_reforco = st.number_input("Valor base do reforço padrão", min_value=0.0, value=10000.0, step=1000.0)
-    aumento_pos_entrega_pct = st.number_input("Aumento automático dos reforços após entrega (%)", min_value=0.0, max_value=300.0, value=0.0, step=5.0)
+    with col3:
+        entrada = st.number_input("Entrada", min_value=0.0, value=120000.0, step=5000.0)
+        parcela_mensal = st.number_input("Parcela mensal inicial", min_value=0.0, value=2500.0, step=500.0)
+        meses_parcelas = st.number_input("Quantidade de parcelas", min_value=0, value=48, step=1)
+        reforco_anual = st.number_input("Reforço anual", min_value=0.0, value=30000.0, step=5000.0)
 
-tab_inputs, tab_resultado, tab_fluxo, tab_ano, tab_criterios = st.tabs(["📝 Dados variáveis", "🎯 Painel executivo", "📅 Fluxo mensal", "📆 Ano a ano", "✅ Critérios"])
+# =============================
+# CÁLCULOS
+# =============================
 
-with tab_inputs:
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown('<div class="card"><div class="section-title">Reforços</div>', unsafe_allow_html=True)
-        if tipo_reforco == "Meses-base recorrentes":
-            st.write("Informe os meses-base. O app repete automaticamente a cada 12 meses até o final.")
-            reforcos_df = st.data_editor(pd.DataFrame({"Mês base": [6, 10], "Valor base": [40642.90, 40642.90]}), num_rows="dynamic", use_container_width=True)
-            padrao_fase_df = pd.DataFrame(columns=["Fase", "Mês base", "Valor base"])
-        elif tipo_reforco == "Variável por mês":
-            st.write("Informe cada reforço individual. Esse modo não repete.")
-            reforcos_df = st.data_editor(pd.DataFrame({"Mês": [6, 10, 18], "Valor": [40642.90, 40642.90, 45000.00]}), num_rows="dynamic", use_container_width=True)
-            padrao_fase_df = pd.DataFrame(columns=["Fase", "Mês base", "Valor base"])
-        elif tipo_reforco == "Variável recorrente por fase":
-            st.write("Use quando a construtora muda os reforços depois da entrega.")
-            padrao_fase_df = st.data_editor(pd.DataFrame({
-                "Fase": ["Antes da entrega", "Antes da entrega", "Depois da entrega", "Depois da entrega"],
-                "Mês base": [6, 12, 6, 12],
-                "Valor base": [20000.0, 20000.0, 40000.0, 40000.0],
-            }), num_rows="dynamic", use_container_width=True)
-            reforcos_df = pd.DataFrame(columns=["Mês", "Valor"])
-        else:
-            reforcos_df = pd.DataFrame(columns=["Mês", "Valor"])
-            padrao_fase_df = pd.DataFrame(columns=["Fase", "Mês base", "Valor base"])
-            st.info("Semestral/anual será repetido até o final e corrigido pelo CUB.")
-        st.markdown('</div>', unsafe_allow_html=True)
+anos_entrega = max(ano_entrega - ano_atual, 1)
+valor_m2 = valor_imovel / metragem if metragem > 0 else 0
 
-    with c2:
-        st.markdown('<div class="card"><div class="section-title">CUB mensal variável</div>', unsafe_allow_html=True)
-        if modo_cub == "CUB mensal variável":
-            cub_df = st.data_editor(pd.DataFrame({"Mês": list(range(1, min(13, prazo+1))), "CUB mensal (%)": [0.35]*min(12, prazo)}), num_rows="dynamic", use_container_width=True)
-        else:
-            cub_df = pd.DataFrame(columns=["Mês", "CUB mensal (%)"])
-            st.info("Use CUB mensal variável na lateral para informar mês a mês.")
-        st.markdown('</div>', unsafe_allow_html=True)
+linhas = []
+for ano in range(1, anos_analise + 1):
+    meses_no_ano = min(12, max(meses_parcelas - ((ano - 1) * 12), 0))
+    parcela_reajustada = parcela_mensal * ((1 + cub_anual) ** (ano - 1))
+    reforco_reajustado = reforco_anual * ((1 + cub_anual) ** (ano - 1))
+    aporte_parcelas = parcela_reajustada * meses_no_ano
+    aporte_reforco = reforco_reajustado if meses_no_ano > 0 else 0
+    aporte_ano = entrada + aporte_parcelas + aporte_reforco if ano == 1 else aporte_parcelas + aporte_reforco
 
-# CUB
-if modo_cub == "CUB anual estimado":
-    reajuste_mensal = (1 + cub_anual/100) ** (1/12) - 1
-    cub_lista = np.full(prazo, reajuste_mensal)
-elif modo_cub == "CUB mensal fixo":
-    reajuste_mensal = cub_mensal / 100
-    cub_lista = np.full(prazo, reajuste_mensal)
-else:
-    last = cub_mensal / 100
-    mapa = {}
-    for _, r in cub_df.dropna().iterrows():
-        mapa[int(r["Mês"])] = float(r["CUB mensal (%)"]) / 100
-    cub_lista = []
-    for m in range(1, prazo+1):
-        if m in mapa:
-            last = mapa[m]
-        cub_lista.append(last)
-    cub_lista = np.array(cub_lista)
-    reajuste_mensal = float(np.mean(cub_lista))
+    total_aportado = sum([l["Aporte no ano"] for l in linhas]) + aporte_ano
+    valor_estimado = valor_imovel * ((1 + valorizacao_anual) ** ano)
+    lucro_bruto = valor_estimado - valor_imovel
+    dinheiro_mao = total_aportado + lucro_bruto
+    roi = (lucro_bruto / total_aportado) * 100 if total_aportado > 0 else 0
+    multiplo = dinheiro_mao / total_aportado if total_aportado > 0 else 0
+    fluxo_medio_mes = (aporte_ano / 12) if ano > 0 else 0
 
-meses = np.arange(1, prazo+1)
+    linhas.append({
+        "Ano": ano,
+        "Aporte no ano": aporte_ano,
+        "Aporte acumulado": total_aportado,
+        "Valor estimado do imóvel": valor_estimado,
+        "Lucro bruto": lucro_bruto,
+        "💰 Retorno total na venda": dinheiro_mao,
+        "Múltiplo do capital": multiplo,
+        "ROI acumulado": roi,
+        "Fluxo médio mês": fluxo_medio_mes
+    })
 
-parcelas = []
-parcela = parcela_inicial
-for i, m in enumerate(meses):
-    if m == 1:
-        parcela = parcela_inicial
-    else:
-        parcela *= (1 + cub_lista[i])
-    parcelas.append(parcela)
-parcelas = np.array(parcelas)
+df = pd.DataFrame(linhas)
+ultimo = df.iloc[-1]
 
-reforcos = montar_reforcos(prazo, tipo_reforco, valor_reforco, cub_lista, mes_entrega, aumento_pos_entrega_pct, reforcos_df, padrao_fase_df)
+aporte_final = ultimo["Aporte acumulado"]
+valor_final = ultimo["Valor estimado do imóvel"]
+lucro_final = ultimo["Lucro bruto"]
+dinheiro_mao_final = ultimo["💰 Retorno total na venda"]
+roi_final = ultimo["ROI acumulado"]
+multiplo_final = ultimo["Múltiplo do capital"]
+fluxo_medio_final = aporte_final / max(anos_analise * 12, 1)
+valorizacao_total = ((valor_final / valor_imovel) - 1) * 100 if valor_imovel > 0 else 0
+aporte_sobre_valor = (aporte_final / valor_imovel) * 100 if valor_imovel > 0 else 0
+nota = calcular_nota(roi_final, multiplo_final, aporte_sobre_valor, anos_entrega)
+classificacao = classificar_nota(nota)
+texto_leitura = leitura_rapida(nota, multiplo_final, roi_final)
 
-desembolso_mensal = parcelas + reforcos
-desembolso_mensal[0] += entrada
-desembolso_acumulado = np.cumsum(desembolso_mensal)
+# =============================
+# PAINEL EXECUTIVO VISUAL
+# =============================
 
-val_aa_uso = valorizacao_conservadora if cenario_nota == "Conservador" else valorizacao_base if cenario_nota == "Base" else valorizacao_otimista
-val_mensal = (1 + val_aa_uso/100) ** (1/12) - 1
-valor_imovel_mes = valor_imovel * ((1 + val_mensal) ** meses)
+st.markdown(f"""
+<div class="hero-grid">
+    <div class="classification-card">
+        <div>
+            <div class="label">CLASSIFICAÇÃO</div>
+            <div class="grade">{classificacao}</div>
+            <div class="score">Nota: {nota}/100</div>
+        </div>
+        <div class="quick-reading">
+            <div class="quick-title">💡 Leitura rápida</div>
+            <div class="quick-text">{texto_leitura}</div>
+        </div>
+    </div>
 
-idx = mes_venda - 1
-investido_ate_venda = float(desembolso_acumulado[idx])
-valor_estimado = float(valor_imovel_mes[idx])
-valor_liquido_estimado = valor_estimado * (1 - desconto_liquidez_pct/100) * (1 - custo_venda_pct/100)
-fluxo_medio = float(np.mean(desembolso_mensal[:idx+1]))
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-title">Investido no fluxo</div>
+            <div class="kpi-icon">💵</div>
+            <div class="kpi-value blue">{moeda(aporte_final)}</div>
+            <div class="kpi-sub">Total aportado</div>
+            <div class="pill pill-blue">Capital imobilizado</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">Dinheiro na mão</div>
+            <div class="kpi-icon">💰</div>
+            <div class="kpi-value green">{moeda(dinheiro_mao_final)}</div>
+            <div class="kpi-sub">Aporte + lucro na venda</div>
+            <div class="pill pill-green">{multiplo_final:.2f}x o capital</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">Lucro real</div>
+            <div class="kpi-icon">📈</div>
+            <div class="kpi-value purple">{moeda(lucro_final)}</div>
+            <div class="kpi-sub">Ganho pela valorização</div>
+            <div class="pill pill-purple">{percentual(roi_final)} sobre aporte</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">ROI real</div>
+            <div class="kpi-icon">🎯</div>
+            <div class="kpi-value orange">{percentual(roi_final)}</div>
+            <div class="kpi-sub">Retorno sobre capital</div>
+            <div class="pill pill-orange">Total do investimento</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">Valor inicial do imóvel</div>
+            <div class="kpi-icon">🏠</div>
+            <div class="kpi-value blue">{moeda(valor_imovel)}</div>
+            <div class="kpi-sub">Valor atual hoje</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">Valor projetado na venda</div>
+            <div class="kpi-icon">🏢</div>
+            <div class="kpi-value green">{moeda(valor_final)}</div>
+            <div class="kpi-sub">Valor estimado futuro</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">Valorização total</div>
+            <div class="kpi-icon">⬆️</div>
+            <div class="kpi-value purple">{percentual(valorizacao_total)}</div>
+            <div class="kpi-sub">Crescimento do imóvel</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">Fluxo médio / mês</div>
+            <div class="kpi-icon">📅</div>
+            <div class="kpi-value orange">{moeda(fluxo_medio_final)}</div>
+            <div class="kpi-sub">Média de desembolso</div>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
-score, nota, leitura, valorizacao_reais, valorizacao_pct, alavancagem_valorizacao, fluxo_pct_imovel, cobertura_valorizacao = classificar_fluxo_valorizacao(
-    investido=investido_ate_venda,
-    valor_inicial=valor_imovel,
-    valor_final=valor_estimado,
-    fluxo_medio=fluxo_medio,
+# =============================
+# TABELA PROFISSIONAL
+# =============================
+
+st.markdown('<div class="section-card">', unsafe_allow_html=True)
+st.markdown('<div class="section-title">📊 DESEMPENHO ANO A ANO</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-subtitle">Projeção de aportes, valorização e retorno total na venda.</div>', unsafe_allow_html=True)
+
+# tabela formatada
+df_tabela = df.copy()
+df_tabela["Ano"] = df_tabela["Ano"].apply(lambda x: f"📅 {x}" + (" (Entrega)" if x == anos_entrega else ""))
+df_tabela["Aporte no ano"] = df_tabela["Aporte no ano"].apply(moeda)
+df_tabela["Aporte acumulado"] = df_tabela["Aporte acumulado"].apply(moeda)
+df_tabela["Valor estimado do imóvel"] = df_tabela["Valor estimado do imóvel"].apply(moeda)
+df_tabela["Lucro bruto"] = df_tabela["Lucro bruto"].apply(moeda)
+df_tabela["💰 Retorno total na venda"] = df_tabela["💰 Retorno total na venda"].apply(lambda x: "💰 " + moeda(x))
+df_tabela["Múltiplo do capital"] = df_tabela["Múltiplo do capital"].apply(lambda x: f"{x:.2f}x")
+df_tabela["ROI acumulado"] = df_tabela["ROI acumulado"].apply(percentual)
+df_tabela = df_tabela.drop(columns=["Fluxo médio mês"])
+
+st.dataframe(
+    df_tabela,
+    use_container_width=True,
+    hide_index=True,
+    height=300
 )
 
-saldo_futuro_assumido = float(np.sum(desembolso_mensal[idx+1:])) if idx+1 < prazo else 0.0
-agio_teorico = max(0, valor_liquido_estimado - saldo_futuro_assumido)
-lucro_sobre_fluxo = valorizacao_reais - investido_ate_venda
+st.markdown(f"""
+<div class="summary-box">
+    <div>
+        <div class="summary-title">🏆 RESUMO FINAL DO INVESTIMENTO</div>
+        <div class="summary-text">
+            Você investiu <b>{moeda(aporte_final)}</b> e receberia aproximadamente <b style="color:#087a20;">{moeda(dinheiro_mao_final)}</b> na venda do imóvel.<br>
+            Lucro bruto estimado de <b style="color:#087a20;">{moeda(lucro_final)}</b>, com valorização total de <b>{percentual(valorizacao_total)}</b>.
+        </div>
+    </div>
+    <div class="summary-metric">
+        <div class="summary-metric-value">{moeda(dinheiro_mao_final)}</div>
+        <div class="summary-metric-label">Retorno total</div>
+    </div>
+    <div class="summary-metric">
+        <div class="summary-metric-value">{moeda(lucro_final)}</div>
+        <div class="summary-metric-label">Lucro bruto</div>
+    </div>
+    <div class="summary-metric">
+        <div class="summary-metric-value">{multiplo_final:.2f}x</div>
+        <div class="summary-metric-label">Múltiplo do capital</div>
+    </div>
+    <div class="summary-metric">
+        <div class="summary-metric-value">{percentual(roi_final)}</div>
+        <div class="summary-metric-label">ROI total</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
-with tab_resultado:
-    left, right = st.columns([1.05, 2.2])
-    with left:
-        st.markdown(f'<div class="grade {nota_css(nota)}"><div style="font-size:14px;">CLASSIFICAÇÃO</div><div style="font-size:44px;">{nota}</div><div style="font-size:18px;">Nota: {score:.0f}/100</div></div>', unsafe_allow_html=True)
-        st.markdown('<div class="card"><div class="section-title">Leitura rápida</div>', unsafe_allow_html=True)
-        st.write(leitura)
-        st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
-    with right:
-        a,b,c,d = st.columns(4)
-        a.metric("Investido no fluxo", moeda(investido_ate_venda))
-        b.metric("Dinheiro na mão", moeda(max(0, valor_liquido_estimado - saldo_futuro_assumido)))
-        c.metric("Lucro real", moeda(max(0, valor_liquido_estimado - saldo_futuro_assumido) - investido_ate_venda))
-        d.metric("ROI real", pct(((max(0, valor_liquido_estimado - saldo_futuro_assumido) - investido_ate_venda) / investido_ate_venda * 100) if investido_ate_venda > 0 else 0))
+# =============================
+# AVALIAÇÃO FINAL
+# =============================
 
-        e,f,g,h = st.columns(4)
-        e.metric("Valor inicial", moeda(valor_imovel))
-        f.metric("Valor projetado", moeda(valor_estimado))
-        g.metric("Valorização %", pct(valorizacao_pct))
-        h.metric("Fluxo médio / imóvel", pct(fluxo_pct_imovel))
-        # Projeção executiva profissional
-        periodos_exec = [2, 3, 4, 5]
-        linhas_exec = []
-        melhor_saida = None
+st.markdown('<div class="section-card">', unsafe_allow_html=True)
+st.markdown('<div class="section-title">✅ AVALIAÇÃO DO INVESTIMENTO</div>', unsafe_allow_html=True)
 
-        for ano_exec in periodos_exec:
-            mes_exec = min(ano_exec * 12, prazo)
-            i_exec = mes_exec - 1
+col_av1, col_av2, col_av3 = st.columns([1, 1.2, 1.4])
 
-            aporte_exec = float(desembolso_acumulado[i_exec])
-            valor_exec = float(valor_imovel_mes[i_exec])
-            valor_venda_liquido_exec = valor_exec * (1 - desconto_liquidez_pct/100) * (1 - custo_venda_pct/100)
-            saldo_restante_exec = float(np.sum(desembolso_mensal[i_exec+1:])) if i_exec+1 < prazo else 0.0
+with col_av1:
+    st.metric("Nota final", f"{nota}/100")
+    st.metric("Classificação", classificacao)
+    st.metric("Valor por m²", moeda(valor_m2))
 
-            dinheiro_na_mao_exec = max(0, valor_venda_liquido_exec - saldo_restante_exec)
-            lucro_real_exec = dinheiro_na_mao_exec - aporte_exec
-            roi_exec = (lucro_real_exec / aporte_exec * 100) if aporte_exec > 0 else 0
-            multiplicador_exec = (dinheiro_na_mao_exec / aporte_exec) if aporte_exec > 0 else 0
-            entrega_flag = "SIM" if mes_exec >= mes_entrega else "NÃO"
+with col_av2:
+    st.write("**Critérios analisados**")
+    st.progress(min(nota / 100, 1.0), text=f"Nota geral: {nota}/100")
+    st.progress(min(roi_final / 200, 1.0), text=f"ROI: {percentual(roi_final)}")
+    st.progress(min(multiplo_final / 3, 1.0), text=f"Múltiplo: {multiplo_final:.2f}x")
+    st.progress(min((100 - aporte_sobre_valor) / 100, 1.0), text=f"Capital imobilizado: {percentual(aporte_sobre_valor)} do imóvel")
 
-            linhas_exec.append({
-                "Período": f"{ano_exec} anos",
-                "Mês": mes_exec,
-                "Entrega concluída": entrega_flag,
-                "Valor aportado": aporte_exec,
-                "Valor venda líquido": valor_venda_liquido_exec,
-                "Saldo futuro assumido": saldo_restante_exec,
-                "Dinheiro na mão": dinheiro_na_mao_exec,
-                "Lucro real": lucro_real_exec,
-                "ROI sobre aporte": roi_exec,
-                "Multiplicador": multiplicador_exec,
-            })
+with col_av3:
+    st.write("**Comentário do investidor**")
+    st.write(f"O empreendimento **{nome}**, em **{localizacao}**, apresenta classificação **{classificacao}**.")
+    st.write(f"Na simulação, o aporte acumulado é de **{moeda(aporte_final)}** e o dinheiro estimado que volta na venda é de **{moeda(dinheiro_mao_final)}**.")
+    st.write(f"O ponto central da análise é que o retorno total considera **capital aportado + lucro da valorização**, que é exatamente o dinheiro que volta para sua mão na saída.")
 
-        exec_df = pd.DataFrame(linhas_exec)
-        melhor_linha = exec_df.loc[exec_df["Lucro real"].idxmax()]
-        melhor_saida_txt = f'{melhor_linha["Período"]} / mês {int(melhor_linha["Mês"])}'
+st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown('<div class="card"><div class="section-title">Projeção profissional de saída: 2, 3, 4 e 5 anos</div>', unsafe_allow_html=True)
-        st.write("Aqui está o dado mais importante: quanto dinheiro volta para sua mão se vender em cada período.")
-        st.dataframe(
-            exec_df.style.format({
-                "Valor aportado": "R$ {:,.2f}",
-                "Valor venda líquido": "R$ {:,.2f}",
-                "Saldo futuro assumido": "R$ {:,.2f}",
-                "Dinheiro na mão": "R$ {:,.2f}",
-                "Lucro real": "R$ {:,.2f}",
-                "ROI sobre aporte": "{:,.2f}%",
-                "Multiplicador": "{:,.2f}x",
-            }),
-            use_container_width=True
-        )
-        st.success(f"Melhor ponto de saída pela simulação: {melhor_saida_txt}, com lucro real estimado de {moeda(float(melhor_linha['Lucro real']))}.")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-
-    st.markdown('<div class="card"><div class="section-title">Resumo da avaliação</div>', unsafe_allow_html=True)
-    dinheiro_na_mao_atual = max(0, valor_liquido_estimado - saldo_futuro_assumido)
-    lucro_real_atual = dinheiro_na_mao_atual - investido_ate_venda
-    roi_real_atual = (lucro_real_atual / investido_ate_venda * 100) if investido_ate_venda > 0 else 0
-
-    st.write(f"""
-    Até o mês **{mes_venda}**, você teria desembolsado **{moeda(investido_ate_venda)}** no fluxo.  
-    O imóvel sairia de **{moeda(valor_imovel)}** para **{moeda(valor_estimado)}**.  
-
-    Mas o cálculo profissional de venda considera que o comprador assume o saldo futuro:
-    - Valor líquido estimado de venda: **{moeda(valor_liquido_estimado)}**
-    - Saldo futuro assumido pelo comprador: **{moeda(saldo_futuro_assumido)}**
-    - **Dinheiro que volta para sua mão: {moeda(dinheiro_na_mao_atual)}**
-    - **Lucro real: {moeda(lucro_real_atual)}**
-    - **ROI real sobre o aporte: {pct(roi_real_atual)}**
-    """)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    chart_df = pd.DataFrame({"Mês": meses, "Total investido": desembolso_acumulado, "Valor estimado do imóvel": valor_imovel_mes}).set_index("Mês")
-    st.markdown('<div class="card"><div class="section-title">Fluxo investido x Valor do imóvel</div>', unsafe_allow_html=True)
-    st.line_chart(chart_df)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-df = pd.DataFrame({
-    "Mês": meses,
-    "Parcela corrigida": parcelas,
-    "Reforço corrigido": reforcos,
-    "Desembolso mensal": desembolso_mensal,
-    "Desembolso acumulado": desembolso_acumulado,
-    "Valor estimado do imóvel": valor_imovel_mes,
-})
-
-with tab_fluxo:
-    st.markdown('<div class="card"><div class="section-title">Fluxo mês a mês</div>', unsafe_allow_html=True)
-    st.dataframe(df.style.format({
-        "Parcela corrigida": "R$ {:,.2f}",
-        "Reforço corrigido": "R$ {:,.2f}",
-        "Desembolso mensal": "R$ {:,.2f}",
-        "Desembolso acumulado": "R$ {:,.2f}",
-        "Valor estimado do imóvel": "R$ {:,.2f}",
-    }), use_container_width=True, height=520)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-anos = []
-for ano in range(1, math.ceil(prazo/12)+1):
-    m = min(ano*12, prazo)
-    i = m - 1
-    anos.append({
-        "Ano": ano,
-        "Mês": m,
-        "Total investido": desembolso_acumulado[i],
-        "Valor estimado imóvel": valor_imovel_mes[i],
-        "Valorização acumulada": valor_imovel_mes[i] - valor_imovel,
-        "Parcela no fim do ano": parcelas[i],
-        "Reforços acumulados": reforcos[:i+1].sum(),
-    })
-ano_df = pd.DataFrame(anos)
-
-with tab_ano:
-    st.markdown('<div class="card"><div class="section-title">Projeção ano a ano</div>', unsafe_allow_html=True)
-    st.dataframe(ano_df.style.format({
-        "Total investido": "R$ {:,.2f}",
-        "Valor estimado imóvel": "R$ {:,.2f}",
-        "Valorização acumulada": "R$ {:,.2f}",
-        "Parcela no fim do ano": "R$ {:,.2f}",
-        "Reforços acumulados": "R$ {:,.2f}",
-    }), use_container_width=True)
-    st.bar_chart(ano_df.set_index("Ano")[["Total investido", "Valorização acumulada"]])
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with tab_criterios:
-    st.markdown('<div class="card"><div class="section-title">Como a nota é calculada agora</div>', unsafe_allow_html=True)
-    st.write("""
-    A nota agora considera **apenas duas coisas**:
-
-    **1. Fluxo de pagamento**  
-    Quanto dinheiro você precisa colocar até o mês de análise/venda.
-
-    **2. Valorização do imóvel**  
-    Quanto o imóvel aumentou de valor no mesmo período.
-
-    O principal cruzamento é:
-
-    **Valorização do imóvel ÷ Total investido no fluxo**
-
-    Exemplo:
-    - Você colocou R$ 100 mil
-    - O imóvel valorizou R$ 150 mil
-    - A valorização equivale a 150% do dinheiro colocado
-
-    Isso recebe uma nota melhor porque mostra alavancagem patrimonial com baixo fluxo.
-
-    A nota também penaliza quando o fluxo médio mensal fica pesado em relação ao valor do imóvel.
-    """)
-    st.info("""
-    Classificação:
-    - **ÓTIMO:** valorização muito superior ao fluxo exigido
-    - **BOM:** valorização superior ao fluxo, com boa margem
-    - **REGULAR:** valorização existe, mas a margem é apertada
-    - **PÉSSIMO:** fluxo pesado demais para pouca valorização
-    """)
-    st.warning("A análise profissional usa o ponto central do investidor: quanto dinheiro volta para sua mão após descontar o saldo futuro assumido pelo comprador.")
-    st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("""
+<div class="warning-box">
+    ℹ️ As projeções são estimativas e não garantem resultados futuros. Esta análise não considera impostos, corretagem, ITBI, escritura, distrato, financiamento, condomínio, vacância ou variações reais de mercado.
+</div>
+""", unsafe_allow_html=True)
