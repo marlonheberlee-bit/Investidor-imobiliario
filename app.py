@@ -1,5 +1,6 @@
 import re
-from datetime import date
+import json
+from datetime import date, datetime
 from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -10,6 +11,11 @@ try:
     import pdfplumber
 except Exception:
     pdfplumber = None
+
+try:
+    from fpdf import FPDF
+except Exception:
+    FPDF = None
 
 st.set_page_config(page_title="ImobInvest Pro", page_icon="🏢", layout="wide")
 
@@ -410,7 +416,22 @@ def criar_fluxo(d: Dict) -> pd.DataFrame:
     mes_entrega = meses_entre(base, date(entrega_ano, 12, 1))
     prazo_total = max(qtd_parcelas, mes_entrega + 48)
 
-    eventos = cronograma_reforcos_ap_towers(d) if d.get("parser") == "AP Towers" else []
+    if d.get("parser") == "AP Towers":
+        eventos = cronograma_reforcos_ap_towers(d)
+    else:
+        eventos = []
+        qtd_pre_manual = int(d.get("qtd_reforcos_pre", 0) or 0)
+        qtd_pos_manual = int(d.get("qtd_reforcos_pos", 0) or 0)
+        valor_pre_manual = float(d.get("reforco_pre_valor", 0) or 0)
+        valor_pos_manual = float(d.get("reforco_pos_valor", 0) or 0)
+        if qtd_pre_manual > 0 and valor_pre_manual > 0:
+            intervalo_pre = max(1, mes_entrega // qtd_pre_manual)
+            for i in range(1, qtd_pre_manual + 1):
+                eventos.append({"mes": min(mes_entrega, i * intervalo_pre), "valor": valor_pre_manual, "tipo": "Reforço até entrega"})
+        if qtd_pos_manual > 0 and valor_pos_manual > 0:
+            intervalo_pos = max(1, 48 // qtd_pos_manual)
+            for i in range(1, qtd_pos_manual + 1):
+                eventos.append({"mes": mes_entrega + i * intervalo_pos, "valor": valor_pos_manual, "tipo": "Reforço pós-entrega"})
     eventos_por_mes = {}
     for e in eventos:
         eventos_por_mes[e["mes"]] = eventos_por_mes.get(e["mes"], 0.0) + e["valor"]
@@ -583,6 +604,121 @@ def decision_html(score: float, roi: float):
     )
 
 # ============================================================
+
+# ============================================================
+# RELATÓRIO PDF E ANÁLISES SALVAS
+# ============================================================
+def texto_relatorio(d: Dict, ind: Dict) -> str:
+    return f"""Relatório Executivo Imobiliário
+
+Ativo
+Empreendimento: {d.get('empreendimento','')}
+Torre: {d.get('torre','')}
+Unidade: {d.get('unidade','')}
+Localização: {d.get('localizacao','')}
+Tipo: {d.get('tipo','')} - {d.get('descricao_tipo','')}
+Área: {float(d.get('area',0) or 0):.2f} m²
+
+Dados Comerciais
+Preço total: {moeda(d.get('preco_total',0))}
+Entrada: {moeda(d.get('entrada',0))}
+Parcelas: {int(d.get('qtd_parcelas',0) or 0)}x de {moeda(d.get('valor_parcela',0))}
+Reforços até entrega: {int(d.get('qtd_reforcos_pre',0) or 0)}x de {moeda(d.get('reforco_pre_valor',0))}
+Reforços pós-entrega: {int(d.get('qtd_reforcos_pos',0) or 0)}x de {moeda(d.get('reforco_pos_valor',0))}
+Entrega: {d.get('entrega_ano','')}
+CUB anual simulado: {pct(d.get('cub_anual',0))}
+Valorização anual simulada: {pct(d.get('valorizacao_anual',0))}
+
+Indicadores
+Valor por m²: {moeda(ind.get('valor_m2',0))}
+Investido até entrega: {moeda(ind.get('investido_entrega',0))}
+Valor projetado na entrega: {moeda(ind.get('valor_entrega',0))}
+Lucro bruto na entrega: {moeda(ind.get('lucro_entrega',0))}
+ROI na entrega: {pct(ind.get('roi_entrega',0))}
+Valor final projetado: {moeda(ind.get('valor_final',0))}
+Investido final: {moeda(ind.get('investido_final',0))}
+Lucro final: {moeda(ind.get('lucro_final',0))}
+ROI final: {pct(ind.get('roi_final',0))}
+Score: {ind.get('score',0):.1f}/10
+
+Conclusão
+Esta análise considera o fluxo de pagamento informado ou extraído do PDF, correção mensal por CUB, valorização anual estimada e capital aportado até a entrega. Antes da decisão final, valide documentação, liquidez de revenda, qualidade da construtora e preço real praticado no mercado.
+"""
+
+
+def gerar_pdf_bytes(relatorio: str) -> Optional[bytes]:
+    if FPDF is None:
+        return None
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_font('Arial', 'B', 16)
+    pdf.multi_cell(0, 9, 'Relatorio Executivo Imobiliario')
+    pdf.ln(3)
+    pdf.set_font('Arial', '', 10)
+    for linha in relatorio.splitlines():
+        texto = linha.encode('latin-1', 'ignore').decode('latin-1')
+        if linha.strip() in ['Ativo', 'Dados Comerciais', 'Indicadores', 'Conclusão']:
+            pdf.set_font('Arial', 'B', 12)
+            pdf.multi_cell(0, 8, texto)
+            pdf.set_font('Arial', '', 10)
+        else:
+            pdf.multi_cell(0, 6, texto)
+    out = pdf.output(dest='S')
+    if isinstance(out, str):
+        return out.encode('latin-1')
+    return bytes(out)
+
+
+def salvar_analise_atual(nome: str, d: Dict, ind: Dict):
+    if 'analises_salvas' not in st.session_state:
+        st.session_state.analises_salvas = []
+    item = {
+        'id': datetime.now().strftime('%Y%m%d%H%M%S%f'),
+        'nome': nome,
+        'data': datetime.now().strftime('%d/%m/%Y %H:%M'),
+        'dados': dict(d),
+        'indicadores': dict(ind),
+    }
+    st.session_state.analises_salvas.insert(0, item)
+
+
+def render_inputs_proposta(d: Dict, prefixo: str = 'manual'):
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        d['empreendimento'] = st.text_input('Empreendimento', d.get('empreendimento', ''), key=f'{prefixo}_empreendimento')
+        d['torre'] = st.text_input('Torre', d.get('torre', ''), key=f'{prefixo}_torre')
+        d['unidade'] = st.text_input('Unidade', d.get('unidade', ''), key=f'{prefixo}_unidade')
+        d['localizacao'] = st.text_input('Localização', d.get('localizacao', ''), key=f'{prefixo}_localizacao')
+    with c2:
+        d['area'] = st.number_input('Área privativa m²', min_value=0.0, value=float(d.get('area', 0) or 0), step=0.01, key=f'{prefixo}_area')
+        d['preco_total'] = st.number_input('Preço total', min_value=0.0, value=float(d.get('preco_total', 0) or 0), step=10000.0, key=f'{prefixo}_preco_total')
+        d['entrada'] = st.number_input('Entrada / ato', min_value=0.0, value=float(d.get('entrada', 0) or 0), step=5000.0, key=f'{prefixo}_entrada')
+        d['valor_parcela'] = st.number_input('Valor da parcela mensal', min_value=0.0, value=float(d.get('valor_parcela', 0) or 0), step=500.0, key=f'{prefixo}_valor_parcela')
+    with c3:
+        d['qtd_parcelas'] = st.number_input('Quantidade de parcelas mensais', min_value=1, value=int(d.get('qtd_parcelas', 120) or 120), step=1, key=f'{prefixo}_qtd_parcelas')
+        d['entrega_ano'] = st.number_input('Ano de entrega', min_value=2026, value=int(d.get('entrega_ano', 2029) or 2029), step=1, key=f'{prefixo}_entrega_ano')
+        d['valor_m2_ref'] = st.number_input('Valor m² de referência', min_value=0.0, value=float(d.get('valor_m2_ref', 17000) or 17000), step=500.0, key=f'{prefixo}_valor_m2_ref')
+        d['parser'] = st.selectbox('Origem do fluxo', ['Manual / Proposta', 'AP Towers', 'Genérico'], index=0 if d.get('parser') not in ['AP Towers','Genérico'] else ['Manual / Proposta','AP Towers','Genérico'].index(d.get('parser')), key=f'{prefixo}_parser')
+
+    st.markdown('### Reforços')
+    r1, r2, r3, r4 = st.columns(4)
+    with r1:
+        d['qtd_reforcos_pre'] = st.number_input('Qtd. reforços até entrega', min_value=0, value=int(d.get('qtd_reforcos_pre', 0) or 0), step=1, key=f'{prefixo}_qtd_ref_pre')
+    with r2:
+        d['reforco_pre_valor'] = st.number_input('Valor de cada reforço até entrega', min_value=0.0, value=float(d.get('reforco_pre_valor', 0) or 0), step=5000.0, key=f'{prefixo}_ref_pre_valor')
+    with r3:
+        d['qtd_reforcos_pos'] = st.number_input('Qtd. reforços pós-entrega', min_value=0, value=int(d.get('qtd_reforcos_pos', 0) or 0), step=1, key=f'{prefixo}_qtd_ref_pos')
+    with r4:
+        d['reforco_pos_valor'] = st.number_input('Valor de cada reforço pós-entrega', min_value=0.0, value=float(d.get('reforco_pos_valor', 0) or 0), step=5000.0, key=f'{prefixo}_ref_pos_valor')
+
+    st.markdown('### Premissas para cenários')
+    p1, p2 = st.columns(2)
+    with p1:
+        d['cub_anual'] = st.slider('CUB anual estimado', 0.0, 15.0, float(d.get('cub_anual', 4.3) or 4.3), 0.1, key=f'{prefixo}_cub')
+    with p2:
+        d['valorizacao_anual'] = st.slider('Valorização anual estimada', 0.0, 30.0, float(d.get('valorizacao_anual', 12) or 12), 0.5, key=f'{prefixo}_val')
+    return d
 # ESTADO
 # ============================================================
 if "dados" not in st.session_state:
@@ -614,6 +750,9 @@ if "dados" not in st.session_state:
 for key, default in [("pdf_texto", ""), ("pdf_linhas", []), ("pdf_paginas", []), ("ultimo_resultado", None)]:
     if key not in st.session_state:
         st.session_state[key] = default
+if "analises_salvas" not in st.session_state:
+    st.session_state.analises_salvas = []
+
 
 d = st.session_state.dados
 
@@ -623,9 +762,9 @@ d = st.session_state.dados
 with st.sidebar:
     st.markdown('<div class="logo">🏢 ImobInvest</div>', unsafe_allow_html=True)
     st.markdown('<div class="logo-sub">ANÁLISE EXECUTIVA</div>', unsafe_allow_html=True)
-    menu = st.radio("Menu", ["Importar PDF", "Painel Executivo", "Dados e Premissas", "Cenários", "Fluxo Detalhado", "Relatório"], label_visibility="collapsed")
+    menu = st.radio("Menu", ["Importar PDF", "Painel Executivo", "Proposta Manual", "Dados e Premissas", "Cenários", "Fluxo Detalhado", "Relatório", "Análises Salvas"], label_visibility="collapsed")
     st.divider()
-    st.caption("v3.0 painel premium + leitura por unidade.")
+    st.caption("v3.1 painel premium + proposta manual + relatórios salvos.")
 
 # ============================================================
 # IMPORTAR PDF
@@ -650,7 +789,7 @@ if menu == "Importar PDF":
         unidade = st.text_input("Apartamento / unidade", value=str(d.get("unidade", "")), placeholder="Ex.: 2401")
         buscar = st.button("Buscar unidade")
     with c2:
-        st.markdown('<div class="warning-clean">Este app já possui parser específico para AP Towers. Para outras construtoras, ele tenta leitura genérica e a estrutura permite adicionar novos parsers sem quebrar o painel.</div>', unsafe_allow_html=True)
+        st.empty()
 
     if buscar:
         if not st.session_state.pdf_paginas:
@@ -780,6 +919,32 @@ if menu == "Painel Executivo":
             metric_line("ROI na entrega", pct(ind.get("roi_entrega", 0)))
             st.markdown('</div>', unsafe_allow_html=True)
 
+# ============================================================
+# PROPOSTA MANUAL
+# ============================================================
+elif menu == "Proposta Manual":
+    st.markdown('<div class="hero-premium"><h1 class="hero-title">Proposta Manual</h1><p class="hero-sub">Monte ou ajuste a proposta conforme sua negociação: entrada, parcelas, prazo, reforços, CUB e valorização.</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+    d = render_inputs_proposta(d, prefixo="proposta")
+    st.session_state.dados = d
+    st.success("Proposta manual atualizada. O painel, os cenários e o relatório já usam estes valores.")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    df_manual, ind_manual = indicadores(d)
+    if float(d.get("preco_total", 0) or 0) > 0:
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            kpi_card("🏷️", "Preço", moeda_compacta(d.get("preco_total", 0)), "Valor da proposta", "mid")
+        with c2:
+            kpi_card("📐", "Valor m²", moeda_compacta(ind_manual.get("valor_m2", 0)), f"Área {float(d.get('area',0) or 0):.2f} m²", "good")
+        with c3:
+            kpi_card("💰", "Investido até entrega", moeda_compacta(ind_manual.get("investido_entrega", 0)), f"CUB {pct(d.get('cub_anual',0))}", "mid")
+        with c4:
+            kpi_card("📈", "Lucro na entrega", moeda_compacta(ind_manual.get("lucro_entrega", 0)), f"ROI {pct(ind_manual.get('roi_entrega',0))}", "good" if ind_manual.get("lucro_entrega", 0) > 0 else "bad")
+
+        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+        st.plotly_chart(fig_fluxo(df_manual), use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 # ============================================================
 # DADOS E PREMISSAS
 # ============================================================
@@ -920,45 +1085,75 @@ elif menu == "Fluxo Detalhado":
 # RELATÓRIO
 # ============================================================
 elif menu == "Relatório":
-    st.markdown('<div class="hero-premium"><h1 class="hero-title">Relatório Executivo</h1><p class="hero-sub">Resumo pronto para análise de investimento.</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero-premium"><h1 class="hero-title">Relatório Executivo</h1><p class="hero-sub">Gere PDF e salve esta análise para consultar ou apagar depois.</p></div>', unsafe_allow_html=True)
     st.markdown('<div class="panel-card">', unsafe_allow_html=True)
     if float(d.get("preco_total", 0) or 0) <= 0:
-        st.warning("Importe uma unidade primeiro.")
+        st.warning("Importe uma unidade ou monte uma proposta manual primeiro.")
     else:
-        relatorio = f"""
-# Relatório Executivo Imobiliário
-
-## Ativo
-
-**Empreendimento:** {d.get('empreendimento','')}  
-**Torre:** {d.get('torre','')}  
-**Unidade:** {d.get('unidade','')}  
-**Localização:** {d.get('localizacao','')}  
-**Tipo:** {d.get('tipo','')} - {d.get('descricao_tipo','')}  
-**Área:** {float(d.get('area',0) or 0):.2f} m²  
-
-## Dados comerciais extraídos do PDF
-
-**Preço total:** {moeda(d.get('preco_total',0))}  
-**Entrada:** {moeda(d.get('entrada',0))}  
-**Parcelas:** {int(d.get('qtd_parcelas',0) or 0)}x de {moeda(d.get('valor_parcela',0))}  
-**Reforços até entrega:** {int(d.get('qtd_reforcos_pre',0) or 0)}x de {moeda(d.get('reforco_pre_valor',0))}  
-**Reforços pós-entrega:** {int(d.get('qtd_reforcos_pos',0) or 0)}x de {moeda(d.get('reforco_pos_valor',0))}  
-**Entrega:** {d.get('entrega_ano','')}  
-
-## Indicadores
-
-**Valor por m²:** {moeda(ind.get('valor_m2',0))}  
-**Investido até entrega:** {moeda(ind.get('investido_entrega',0))}  
-**Valor projetado na entrega:** {moeda(ind.get('valor_entrega',0))}  
-**Lucro bruto na entrega:** {moeda(ind.get('lucro_entrega',0))}  
-**ROI na entrega:** {pct(ind.get('roi_entrega',0))}  
-**Score:** {ind.get('score',0):.1f}/10  
-
-## Conclusão
-
-A análise considera o fluxo extraído do PDF, correção mensal por CUB, valorização anual estimada e capital aportado até a entrega. Antes da decisão final, valide documentação, liquidez de revenda, qualidade da construtora e preço real praticado no mercado.
-"""
-        st.markdown(relatorio)
-        st.download_button("Baixar relatório em Markdown", data=relatorio.encode("utf-8"), file_name="relatorio_imobiliario.md", mime="text/markdown")
+        relatorio = texto_relatorio(d, ind)
+        st.text_area("Prévia do relatório", relatorio, height=430)
+        nome_padrao = f"{d.get('empreendimento','Empreendimento')} - {d.get('torre','')} - Unidade {d.get('unidade','')}"
+        nome_analise = st.text_input("Nome para salvar a análise", value=nome_padrao)
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            pdf_bytes = gerar_pdf_bytes(relatorio)
+            if pdf_bytes:
+                st.download_button(
+                    "📄 Baixar relatório PDF",
+                    data=pdf_bytes,
+                    file_name=f"relatorio_{str(d.get('unidade','analise')).replace(' ', '_')}.pdf",
+                    mime="application/pdf",
+                )
+            else:
+                st.warning("Para gerar PDF, adicione fpdf2 no requirements.txt.")
+        with c2:
+            st.download_button(
+                "⬇️ Baixar dados da análise",
+                data=json.dumps({"dados": d, "indicadores": ind}, ensure_ascii=False, indent=2).encode("utf-8"),
+                file_name=f"analise_{str(d.get('unidade','imovel')).replace(' ', '_')}.json",
+                mime="application/json",
+            )
+        with c3:
+            if st.button("💾 Salvar nesta sessão"):
+                salvar_analise_atual(nome_analise, d, ind)
+                st.success("Análise salva na aba Análises Salvas.")
     st.markdown('</div>', unsafe_allow_html=True)
+
+# ============================================================
+# ANÁLISES SALVAS
+# ============================================================
+elif menu == "Análises Salvas":
+    st.markdown('<div class="hero-premium"><h1 class="hero-title">Análises Salvas</h1><p class="hero-sub">Consulte, baixe em PDF ou apague análises salvas durante esta sessão.</p></div>', unsafe_allow_html=True)
+    if not st.session_state.analises_salvas:
+        st.info("Nenhuma análise salva ainda. Gere uma análise na aba Relatório e clique em salvar.")
+    else:
+        for idx, item in enumerate(list(st.session_state.analises_salvas)):
+            dados_item = item.get('dados', {})
+            ind_item = item.get('indicadores', {})
+            st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+            st.markdown(f"### {item.get('nome','Análise')}  \nSalva em: **{item.get('data','')}**")
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.metric("Unidade", dados_item.get('unidade',''))
+            with c2:
+                st.metric("Preço", moeda(dados_item.get('preco_total',0)))
+            with c3:
+                st.metric("Lucro entrega", moeda(ind_item.get('lucro_entrega',0)))
+            with c4:
+                st.metric("Score", f"{ind_item.get('score',0):.1f}/10")
+
+            rel = texto_relatorio(dados_item, ind_item)
+            b1, b2, b3 = st.columns(3)
+            with b1:
+                pdf = gerar_pdf_bytes(rel)
+                if pdf:
+                    st.download_button("Baixar PDF", data=pdf, file_name=f"relatorio_salvo_{idx+1}.pdf", mime="application/pdf", key=f"pdf_salvo_{item['id']}")
+            with b2:
+                if st.button("Carregar no painel", key=f"carregar_{item['id']}"):
+                    st.session_state.dados = dict(dados_item)
+                    st.success("Análise carregada no painel.")
+            with b3:
+                if st.button("Apagar", key=f"apagar_{item['id']}"):
+                    st.session_state.analises_salvas = [x for x in st.session_state.analises_salvas if x.get('id') != item.get('id')]
+                    st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
