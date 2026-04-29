@@ -61,7 +61,7 @@ html, body, [class*="css"] {font-family: 'Inter', sans-serif;}
 }
 .kpi-icon {width:38px;height:38px;border-radius:14px;background:#eef4ff;color:#2563eb;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:12px;}
 .kpi-label {font-size:11px;color:#64748b;font-weight:900;text-transform:uppercase;letter-spacing:.45px;margin-bottom:8px;}
-.kpi-value {font-size:24px;font-weight:900;color:#071735;line-height:1.08;white-space:nowrap;letter-spacing:-.8px;}
+.kpi-value {font-size:21px;font-weight:900;color:#071735;line-height:1.12;white-space:nowrap;letter-spacing:-.7px;}
 .kpi-sub {font-size:12px;font-weight:800;margin-top:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .good {color:#059669!important;}
 .mid {color:#d97706!important;}
@@ -126,7 +126,7 @@ def moeda(v) -> str:
         return "R$ 0,00"
 
 
-def moeda_compacta(v) -> str:
+def moeda(v) -> str:
     try:
         v = float(v)
         if abs(v) >= 1_000_000:
@@ -646,29 +646,83 @@ Esta análise considera o fluxo de pagamento informado ou extraído do PDF, corr
 """
 
 
+def _pdf_safe_text(texto: str) -> str:
+    texto = str(texto or "")
+    troca = {"–": "-", "—": "-", "“": "\"", "”": "\"", "‘": "'", "’": "'", "•": "-", "²": "2"}
+    for a, b in troca.items():
+        texto = texto.replace(a, b)
+    return texto.encode("latin-1", "ignore").decode("latin-1")
+
+
+def _quebrar_linha_pdf(texto: str, limite: int = 105) -> List[str]:
+    texto = _pdf_safe_text(texto)
+    if len(texto) <= limite:
+        return [texto]
+    partes = []
+    atual = ""
+    for palavra in texto.split(" "):
+        if len(palavra) > limite:
+            if atual:
+                partes.append(atual)
+                atual = ""
+            for i in range(0, len(palavra), limite):
+                partes.append(palavra[i:i + limite])
+        elif len(atual) + len(palavra) + 1 <= limite:
+            atual = (atual + " " + palavra).strip()
+        else:
+            partes.append(atual)
+            atual = palavra
+    if atual:
+        partes.append(atual)
+    return partes
+
+
 def gerar_pdf_bytes(relatorio: str) -> Optional[bytes]:
     if FPDF is None:
         return None
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.set_font('Arial', 'B', 16)
-    pdf.multi_cell(0, 9, 'Relatorio Executivo Imobiliario')
-    pdf.ln(3)
-    pdf.set_font('Arial', '', 10)
-    for linha in relatorio.splitlines():
-        texto = linha.encode('latin-1', 'ignore').decode('latin-1')
-        if linha.strip() in ['Ativo', 'Dados Comerciais', 'Indicadores', 'Conclusão']:
-            pdf.set_font('Arial', 'B', 12)
-            pdf.multi_cell(0, 8, texto)
-            pdf.set_font('Arial', '', 10)
-        else:
-            pdf.multi_cell(0, 6, texto)
-    out = pdf.output(dest='S')
-    if isinstance(out, str):
-        return out.encode('latin-1')
-    return bytes(out)
 
+    pdf = FPDF(format="A4")
+    pdf.set_margins(14, 14, 14)
+    pdf.set_auto_page_break(auto=True, margin=14)
+    pdf.add_page()
+
+    pdf.set_fill_color(6, 25, 54)
+    pdf.rect(0, 0, 210, 28, "F")
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.set_xy(14, 8)
+    pdf.cell(0, 8, "Relatorio Executivo Imobiliario", ln=True)
+
+    pdf.set_text_color(15, 23, 42)
+    pdf.set_y(36)
+    titulos = {"Ativo", "Dados Comerciais", "Indicadores", "Conclusão", "Conclusao"}
+
+    for linha in str(relatorio or "").splitlines():
+        linha_original = linha.strip()
+        if not linha_original:
+            pdf.ln(3)
+            continue
+
+        if linha_original in titulos:
+            pdf.set_font("Helvetica", "B", 12)
+            pdf.set_text_color(8, 26, 58)
+            pdf.set_x(14)
+            pdf.multi_cell(182, 7, _pdf_safe_text(linha_original), align="L")
+            pdf.set_text_color(15, 23, 42)
+            pdf.set_font("Helvetica", "", 10)
+            continue
+
+        pdf.set_font("Helvetica", "", 10)
+        for parte in _quebrar_linha_pdf(linha_original, limite=105):
+            pdf.set_x(14)
+            pdf.multi_cell(182, 6, parte, align="L")
+
+    out = pdf.output(dest="S")
+    if isinstance(out, bytes):
+        return out
+    if isinstance(out, bytearray):
+        return bytes(out)
+    return str(out).encode("latin-1", "ignore")
 
 def salvar_analise_atual(nome: str, d: Dict, ind: Dict):
     if 'analises_salvas' not in st.session_state:
@@ -864,14 +918,14 @@ if menu == "Painel Executivo":
         st.markdown('<div class="kpi-grid">', unsafe_allow_html=True)
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
-            kpi_card("🏷️", "Preço total", moeda_compacta(d.get("preco_total", 0)), "Valor da tabela", "mid")
+            kpi_card("🏷️", "Preço total", moeda(d.get("preco_total", 0)), "Valor da tabela", "mid")
         with c2:
             area_txt = f"Área {float(d.get('area',0) or 0):.2f} m²"
-            kpi_card("📐", "Valor por m²", moeda_compacta(ind.get("valor_m2", 0)), area_txt, "good" if ind.get("valor_m2", 0) > 0 else "bad")
+            kpi_card("📐", "Valor por m²", moeda(ind.get("valor_m2", 0)), area_txt, "good" if ind.get("valor_m2", 0) > 0 else "bad")
         with c3:
-            kpi_card("💰", "Investido até entrega", moeda_compacta(ind.get("investido_entrega", 0)), f"Até {d.get('entrega_ano','')}", "mid")
+            kpi_card("💰", "Investido até entrega", moeda(ind.get("investido_entrega", 0)), f"Até {d.get('entrega_ano','')}", "mid")
         with c4:
-            kpi_card("📈", "Lucro na entrega", moeda_compacta(ind.get("lucro_entrega", 0)), f"ROI {pct(ind.get('roi_entrega',0))}", "good" if ind.get("lucro_entrega", 0) > 0 else "bad")
+            kpi_card("📈", "Lucro na entrega", moeda(ind.get("lucro_entrega", 0)), f"ROI {pct(ind.get('roi_entrega',0))}", "good" if ind.get("lucro_entrega", 0) > 0 else "bad")
         with c5:
             score_val = ind.get("score", 0)
             kpi_card("⭐", "Score", f"{score_val:.1f}/10", "Nota executiva", "good" if score_val >= 7 else "mid" if score_val >= 5 else "bad")
@@ -934,13 +988,13 @@ elif menu == "Proposta Manual":
     if float(d.get("preco_total", 0) or 0) > 0:
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            kpi_card("🏷️", "Preço", moeda_compacta(d.get("preco_total", 0)), "Valor da proposta", "mid")
+            kpi_card("🏷️", "Preço", moeda(d.get("preco_total", 0)), "Valor da proposta", "mid")
         with c2:
-            kpi_card("📐", "Valor m²", moeda_compacta(ind_manual.get("valor_m2", 0)), f"Área {float(d.get('area',0) or 0):.2f} m²", "good")
+            kpi_card("📐", "Valor m²", moeda(ind_manual.get("valor_m2", 0)), f"Área {float(d.get('area',0) or 0):.2f} m²", "good")
         with c3:
-            kpi_card("💰", "Investido até entrega", moeda_compacta(ind_manual.get("investido_entrega", 0)), f"CUB {pct(d.get('cub_anual',0))}", "mid")
+            kpi_card("💰", "Investido até entrega", moeda(ind_manual.get("investido_entrega", 0)), f"CUB {pct(d.get('cub_anual',0))}", "mid")
         with c4:
-            kpi_card("📈", "Lucro na entrega", moeda_compacta(ind_manual.get("lucro_entrega", 0)), f"ROI {pct(ind_manual.get('roi_entrega',0))}", "good" if ind_manual.get("lucro_entrega", 0) > 0 else "bad")
+            kpi_card("📈", "Lucro na entrega", moeda(ind_manual.get("lucro_entrega", 0)), f"ROI {pct(ind_manual.get('roi_entrega',0))}", "good" if ind_manual.get("lucro_entrega", 0) > 0 else "bad")
 
         st.markdown('<div class="panel-card">', unsafe_allow_html=True)
         st.plotly_chart(fig_fluxo(df_manual), use_container_width=True)
@@ -1028,7 +1082,7 @@ elif menu == "Cenários":
         k1, k2, k3 = st.columns(3)
         for col, row in zip([k1, k2, k3], linhas_cenarios):
             with col:
-                kpi_card("📊", row["Cenário"], moeda_compacta(row["Lucro na entrega"]), f"ROI {pct(row['ROI na entrega'])} | Score {row['Score']:.1f}", "good" if row["Lucro na entrega"] > 0 else "bad")
+                kpi_card("📊", row["Cenário"], moeda(row["Lucro na entrega"]), f"ROI {pct(row['ROI na entrega'])} | Score {row['Score']:.1f}", "good" if row["Lucro na entrega"] > 0 else "bad")
 
         st.markdown('</div>', unsafe_allow_html=True)
 
