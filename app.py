@@ -439,8 +439,6 @@ def criar_fluxo(d: Dict) -> pd.DataFrame:
         pagamento = parcela_corrigida + reforcos
         investido += pagamento
         valor_proj = preco * ((1 + val_mensal) ** mes)
-        lucro = valor_proj - investido
-        roi = lucro / investido * 100 if investido > 0 else 0
         rows.append({
             "Mês": mes,
             "Fase": "Até entrega" if mes <= mes_entrega else "Pós-entrega",
@@ -449,10 +447,24 @@ def criar_fluxo(d: Dict) -> pd.DataFrame:
             "Pagamento Mensal": pagamento,
             "Total Investido": investido,
             "Valor Projetado": valor_proj,
-            "Lucro Bruto": lucro,
-            "ROI %": roi,
         })
-    return pd.DataFrame(rows)
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+
+    # Cálculo corrigido do lucro:
+    # Antes: valor de mercado - capital investido até a entrega.
+    # Agora: valor de mercado - saldo devedor - capital investido.
+    # Isso evita inflar o resultado quando ainda existe saldo a pagar.
+    total_contrato_simulado = float(df["Total Investido"].iloc[-1])
+    df["Saldo Devedor"] = (total_contrato_simulado - df["Total Investido"]).clip(lower=0)
+    df["Lucro Bruto"] = df["Valor Projetado"] - df["Saldo Devedor"] - df["Total Investido"]
+    df["ROI %"] = df.apply(
+        lambda r: (r["Lucro Bruto"] / r["Total Investido"] * 100) if r["Total Investido"] > 0 else 0,
+        axis=1,
+    )
+    return df
 
 
 def indicadores(d: Dict):
