@@ -84,12 +84,8 @@ html, body, [class*="css"] {font-family: 'Inter', sans-serif;}
 .metric-line b {color:#0f172a;text-align:right;}
 
 
-.equal-card {
-    min-height: 405px;
-}
-
 .decision-box {
-    margin-bottom: 0 !important;
+    margin-bottom: 18px !important;
 }
 
 .decision-box {border-radius:24px;padding:22px;color:white;background:linear-gradient(135deg,#047857,#10b981);box-shadow:0 14px 32px rgba(4,120,87,.22);}
@@ -947,67 +943,67 @@ if menu == "Painel Executivo":
 
         st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
 
-        # Faixa executiva horizontal: decisão + score sem espremer o layout lateral
+        # Faixa executiva horizontal: decisão + score
         decision_html(ind.get("score", 0), ind.get("roi_entrega", 0))
 
-        # Linha 1: dados do ativo e fluxo da proposta
+        def card_html(titulo, linhas):
+            linhas_html = "".join(
+                [f'<div class="metric-line"><span>{label}</span><b>{value}</b></div>' for label, value in linhas]
+            )
+            st.markdown(
+                f'<div class="panel-card"><div class="section-title">{titulo}</div>{linhas_html}</div>',
+                unsafe_allow_html=True,
+            )
+
+        score_val = ind.get("score", 0)
+        if score_val >= 8:
+            status = "Oportunidade forte"
+            leitura = "Prioridade para análise documental, negociação e validação de liquidez."
+        elif score_val >= 6:
+            status = "Boa oportunidade"
+            leitura = "Avançar com cautela, validando preço de revenda, prazo e força da construtora."
+        else:
+            status = "Cautela"
+            leitura = "Comparar com outras unidades antes de assumir o fluxo."
+
         col_resumo, col_fluxo = st.columns(2)
-
         with col_resumo:
-            st.markdown('<div class="panel-card equal-card">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">Resumo do ativo</div>', unsafe_allow_html=True)
-            metric_line("Empreendimento", str(d.get("empreendimento", "")))
-            metric_line("Torre / unidade", f"{d.get('torre','')} / {d.get('unidade','')}")
-            metric_line("Tipo", f"{d.get('tipo','')} - {d.get('descricao_tipo','')}")
-            metric_line("Área privativa", f"{float(d.get('area',0) or 0):.2f} m²")
-            metric_line("Preço total", moeda(d.get("preco_total", 0)))
-            metric_line("Valor por m²", moeda(ind.get("valor_m2", 0)))
-            st.markdown('</div>', unsafe_allow_html=True)
-
+            card_html("Resumo do ativo", [
+                ("Empreendimento", str(d.get("empreendimento", ""))),
+                ("Torre / unidade", f"{d.get('torre','')} / {d.get('unidade','')}"),
+                ("Tipo", f"{d.get('tipo','')} - {d.get('descricao_tipo','')}"),
+                ("Área privativa", f"{float(d.get('area',0) or 0):.2f} m²"),
+                ("Preço total", moeda(d.get("preco_total", 0))),
+                ("Valor por m²", moeda(ind.get("valor_m2", 0))),
+            ])
         with col_fluxo:
-            st.markdown('<div class="panel-card equal-card">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">Fluxo extraído / ajustado</div>', unsafe_allow_html=True)
-            metric_line("Entrada", moeda(d.get("entrada", 0)))
-            metric_line("Parcelas", f"{int(d.get('qtd_parcelas',0) or 0)}x de {moeda(d.get('valor_parcela',0))}")
-            metric_line("Reforços até entrega", f"{int(d.get('qtd_reforcos_pre',0) or 0)}x de {moeda(d.get('reforco_pre_valor',0))}")
-            metric_line("Reforços pós-entrega", f"{int(d.get('qtd_reforcos_pos',0) or 0)}x de {moeda(d.get('reforco_pos_valor',0))}")
-            metric_line("CUB simulado", pct(d.get("cub_anual", 0)))
-            metric_line("Valorização simulada", pct(d.get("valorizacao_anual", 0)))
-            st.markdown('</div>', unsafe_allow_html=True)
+            card_html("Fluxo extraído / ajustado", [
+                ("Entrada", moeda(d.get("entrada", 0))),
+                ("Parcelas", f"{int(d.get('qtd_parcelas',0) or 0)}x de {moeda(d.get('valor_parcela',0))}"),
+                ("Reforços até entrega", f"{int(d.get('qtd_reforcos_pre',0) or 0)}x de {moeda(d.get('reforco_pre_valor',0))}"),
+                ("Reforços pós-entrega", f"{int(d.get('qtd_reforcos_pos',0) or 0)}x de {moeda(d.get('reforco_pos_valor',0))}"),
+                ("CUB simulado", pct(d.get("cub_anual", 0))),
+                ("Valorização simulada", pct(d.get("valorizacao_anual", 0))),
+            ])
 
-        # Linha 2: retorno e decisão operacional
         col_retorno, col_estrategia = st.columns(2)
-
         with col_retorno:
-            st.markdown('<div class="panel-card equal-card">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">Retorno projetado</div>', unsafe_allow_html=True)
-            metric_line("Valor na entrega", moeda(ind.get("valor_entrega", 0)))
-            metric_line("Investido na entrega", moeda(ind.get("investido_entrega", 0)))
-            metric_line("Saldo a assumir na entrega", moeda(ind.get("saldo_devedor_entrega", 0)))
-            metric_line("Lucro líquido na entrega", moeda(ind.get("lucro_entrega", 0)))
-            metric_line("ROI na entrega", pct(ind.get("roi_entrega", 0)))
-            metric_line("Valor projetado final", moeda(ind.get("valor_final", 0)))
-            st.markdown('</div>', unsafe_allow_html=True)
-
+            card_html("Retorno projetado", [
+                ("Valor na entrega", moeda(ind.get("valor_entrega", 0))),
+                ("Investido na entrega", moeda(ind.get("investido_entrega", 0))),
+                ("Saldo a assumir na entrega", moeda(ind.get("saldo_devedor_entrega", 0))),
+                ("Lucro líquido na entrega", moeda(ind.get("lucro_entrega", 0))),
+                ("ROI na entrega", pct(ind.get("roi_entrega", 0))),
+                ("Valor projetado final", moeda(ind.get("valor_final", 0))),
+            ])
         with col_estrategia:
-            st.markdown('<div class="panel-card equal-card">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">Decisão executiva</div>', unsafe_allow_html=True)
-            score_val = ind.get("score", 0)
-            if score_val >= 8:
-                status = "Oportunidade forte"
-                leitura = "Prioridade para análise documental, negociação e validação de liquidez."
-            elif score_val >= 6:
-                status = "Boa oportunidade"
-                leitura = "Avançar com cautela, validando preço de revenda, prazo e força da construtora."
-            else:
-                status = "Cautela"
-                leitura = "Comparar com outras unidades antes de assumir o fluxo."
-            metric_line("Status", status)
-            metric_line("Score", f"{score_val:.1f}/10")
-            metric_line("Risco", str(d.get("risco", "Médio")))
-            metric_line("Liquidez", str(d.get("liquidez", "Alta")))
-            metric_line("Estratégia", leitura)
-            st.markdown('</div>', unsafe_allow_html=True)
+            card_html("Decisão executiva", [
+                ("Status", status),
+                ("Score", f"{score_val:.1f}/10"),
+                ("Risco", str(d.get("risco", "Médio"))),
+                ("Liquidez", str(d.get("liquidez", "Alta"))),
+                ("Estratégia", leitura),
+            ])
 
         chart_left, chart_right = st.columns([1.1, 1])
         with chart_left:
