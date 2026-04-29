@@ -358,6 +358,8 @@ def buscar_unidade_generico(texto: str, linhas: List[str], unidade: str) -> Opti
         "preco_total": max(vals) if vals else 0.0,
         "qtd_reforcos_pre": 0,
         "qtd_reforcos_pos": 0,
+        "meses_reforcos_pre": "",
+        "meses_reforcos_pos": "",
         "entrega_ano": 2029,
         "parser": "Genérico",
         "trecho": bloco,
@@ -375,6 +377,30 @@ def buscar_unidade_pdf(texto: str, linhas: List[str], paginas: List[Dict], unida
 # ============================================================
 # FLUXO FINANCEIRO
 # ============================================================
+
+def parse_meses_reforcos(texto: str) -> List[int]:
+    """Converte texto tipo '6, 10, 18' em lista [6, 10, 18]."""
+    if not texto:
+        return []
+    partes = re.split(r"[,;\s]+", str(texto).strip())
+    meses = []
+    for p in partes:
+        if not p:
+            continue
+        try:
+            m = int(float(p.replace(",", ".")))
+            if m > 0:
+                meses.append(m)
+        except Exception:
+            pass
+    # remove duplicados mantendo ordem
+    out = []
+    for m in meses:
+        if m not in out:
+            out.append(m)
+    return out
+
+
 def cronograma_reforcos_ap_towers(d: Dict) -> List[Dict]:
     base = ano_atual_base()
     eventos = []
@@ -416,14 +442,31 @@ def criar_fluxo(d: Dict) -> pd.DataFrame:
     mes_entrega = meses_entre(base, date(entrega_ano, 12, 1))
     prazo_total = max(qtd_parcelas, mes_entrega + 48)
 
-    if d.get("parser") == "AP Towers":
+    # Reforços:
+    # 1) Se o usuário informar meses manualmente, eles têm prioridade.
+    #    - "Meses até entrega": meses contados desde o início da análise. Ex.: 6,10,18
+    #    - "Meses pós-entrega": meses contados após a entrega. Ex.: 6,10,18
+    # 2) Se não informar meses e o parser for AP Towers, usa o calendário padrão da tabela.
+    # 3) Se não informar meses e for proposta manual, distribui automaticamente pela quantidade.
+    eventos = []
+    meses_pre_manuais = parse_meses_reforcos(d.get("meses_reforcos_pre", ""))
+    meses_pos_manuais = parse_meses_reforcos(d.get("meses_reforcos_pos", ""))
+
+    qtd_pre_manual = int(d.get("qtd_reforcos_pre", 0) or 0)
+    qtd_pos_manual = int(d.get("qtd_reforcos_pos", 0) or 0)
+    valor_pre_manual = float(d.get("reforco_pre_valor", 0) or 0)
+    valor_pos_manual = float(d.get("reforco_pos_valor", 0) or 0)
+
+    if (meses_pre_manuais or meses_pos_manuais):
+        for m in meses_pre_manuais:
+            if valor_pre_manual > 0 and m <= mes_entrega:
+                eventos.append({"mes": m, "valor": valor_pre_manual, "tipo": "Reforço até entrega"})
+        for m in meses_pos_manuais:
+            if valor_pos_manual > 0:
+                eventos.append({"mes": mes_entrega + m, "valor": valor_pos_manual, "tipo": "Reforço pós-entrega"})
+    elif d.get("parser") == "AP Towers":
         eventos = cronograma_reforcos_ap_towers(d)
     else:
-        eventos = []
-        qtd_pre_manual = int(d.get("qtd_reforcos_pre", 0) or 0)
-        qtd_pos_manual = int(d.get("qtd_reforcos_pos", 0) or 0)
-        valor_pre_manual = float(d.get("reforco_pre_valor", 0) or 0)
-        valor_pos_manual = float(d.get("reforco_pos_valor", 0) or 0)
         if qtd_pre_manual > 0 and valor_pre_manual > 0:
             intervalo_pre = max(1, mes_entrega // qtd_pre_manual)
             for i in range(1, qtd_pre_manual + 1):
@@ -778,6 +821,25 @@ def render_inputs_proposta(d: Dict, prefixo: str = 'manual'):
     with r4:
         d['reforco_pos_valor'] = st.number_input('Valor de cada reforço pós-entrega', min_value=0.0, value=float(d.get('reforco_pos_valor', 0) or 0), step=5000.0, key=f'{prefixo}_ref_pos_valor')
 
+    st.markdown('#### Meses de cobrança dos reforços')
+    m1, m2 = st.columns(2)
+    with m1:
+        d['meses_reforcos_pre'] = st.text_input(
+            'Meses dos reforços até entrega',
+            value=str(d.get('meses_reforcos_pre', '') or ''),
+            placeholder='Ex.: 6, 10, 18, 24',
+            help='Meses contados desde o início da análise. Se preencher, estes meses substituem a distribuição automática.',
+            key=f'{prefixo}_meses_ref_pre'
+        )
+    with m2:
+        d['meses_reforcos_pos'] = st.text_input(
+            'Meses dos reforços pós-entrega',
+            value=str(d.get('meses_reforcos_pos', '') or ''),
+            placeholder='Ex.: 6, 10, 18, 24',
+            help='Meses contados após a entrega. Ex.: 6 significa 6 meses depois da entrega.',
+            key=f'{prefixo}_meses_ref_pos'
+        )
+
     st.markdown('### Premissas para cenários')
     p1, p2 = st.columns(2)
     with p1:
@@ -805,6 +867,8 @@ if "dados" not in st.session_state:
         "reforco_pos_valor": 0.0,
         "qtd_reforcos_pre": 0,
         "qtd_reforcos_pos": 0,
+        "meses_reforcos_pre": "",
+        "meses_reforcos_pos": "",
         "entrega_ano": 2029,
         "cub_anual": 4.3,
         "valorizacao_anual": 12.0,
@@ -980,8 +1044,8 @@ if menu == "Painel Executivo":
             card_html("Fluxo extraído / ajustado", [
                 ("Entrada", moeda(d.get("entrada", 0))),
                 ("Parcelas", f"{int(d.get('qtd_parcelas',0) or 0)}x de {moeda(d.get('valor_parcela',0))}"),
-                ("Reforços até entrega", f"{int(d.get('qtd_reforcos_pre',0) or 0)}x de {moeda(d.get('reforco_pre_valor',0))}"),
-                ("Reforços pós-entrega", f"{int(d.get('qtd_reforcos_pos',0) or 0)}x de {moeda(d.get('reforco_pos_valor',0))}"),
+                ("Reforços até entrega", f"{int(d.get('qtd_reforcos_pre',0) or 0)}x de {moeda(d.get('reforco_pre_valor',0))}" + (f" | meses: {d.get('meses_reforcos_pre')}" if d.get('meses_reforcos_pre') else "")),
+                ("Reforços pós-entrega", f"{int(d.get('qtd_reforcos_pos',0) or 0)}x de {moeda(d.get('reforco_pos_valor',0))}" + (f" | meses: {d.get('meses_reforcos_pos')}" if d.get('meses_reforcos_pos') else "")),
                 ("CUB simulado", pct(d.get("cub_anual", 0))),
                 ("Valorização simulada", pct(d.get("valorizacao_anual", 0))),
             ])
