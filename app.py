@@ -950,8 +950,6 @@ if menu == "Painel Executivo":
         # Faixa executiva horizontal: decisão + score sem espremer o layout lateral
         decision_html(ind.get("score", 0), ind.get("roi_entrega", 0))
 
-        st.markdown('<div style="height:18px"></div>', unsafe_allow_html=True)
-
         # Linha 1: dados do ativo e fluxo da proposta
         col_resumo, col_fluxo = st.columns(2)
 
@@ -976,8 +974,6 @@ if menu == "Painel Executivo":
             metric_line("CUB simulado", pct(d.get("cub_anual", 0)))
             metric_line("Valorização simulada", pct(d.get("valorizacao_anual", 0)))
             st.markdown('</div>', unsafe_allow_html=True)
-
-        st.markdown('<div style="height:18px"></div>', unsafe_allow_html=True)
 
         # Linha 2: retorno e decisão operacional
         col_retorno, col_estrategia = st.columns(2)
@@ -1012,8 +1008,6 @@ if menu == "Painel Executivo":
             metric_line("Liquidez", str(d.get("liquidez", "Alta")))
             metric_line("Estratégia", leitura)
             st.markdown('</div>', unsafe_allow_html=True)
-
-        st.markdown('<div style="height:18px"></div>', unsafe_allow_html=True)
 
         chart_left, chart_right = st.columns([1.1, 1])
         with chart_left:
