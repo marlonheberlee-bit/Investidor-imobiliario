@@ -52,17 +52,19 @@ html, body, [class*="css"] {font-family: 'Inter', sans-serif;}
 .kpi-grid {display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:18px;margin-bottom:20px;}
 .kpi-card {
     background:white;
-    padding:21px 22px;
+    padding:20px 18px;
     border-radius:24px;
     border:1px solid #e5eaf3;
     box-shadow:0 14px 36px rgba(15,23,42,.075);
-    min-height:142px;
+    min-height:148px;
     overflow:hidden;
 }
 .kpi-icon {width:38px;height:38px;border-radius:14px;background:#eef4ff;color:#2563eb;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:12px;}
 .kpi-label {font-size:11px;color:#64748b;font-weight:900;text-transform:uppercase;letter-spacing:.45px;margin-bottom:8px;}
-.kpi-value {font-size:21px;font-weight:900;color:#071735;line-height:1.12;white-space:nowrap;letter-spacing:-.7px;}
+.kpi-value {font-size:18px;font-weight:900;color:#071735;line-height:1.15;white-space:nowrap;letter-spacing:-.8px;}
 .kpi-sub {font-size:12px;font-weight:800;margin-top:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.executive-row {margin-top:4px;}
+.chart-card {min-height:420px;}
 .good {color:#059669!important;}
 .mid {color:#d97706!important;}
 .bad {color:#dc2626!important;}
@@ -120,23 +122,16 @@ html, body, [class*="css"] {font-family: 'Inter', sans-serif;}
 # FORMATADORES
 # ============================================================
 def moeda(v) -> str:
+    """Formata sempre com valor cheio, sem abreviar em mil/mi."""
     try:
         return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except Exception:
         return "R$ 0,00"
 
 
-def moeda(v) -> str:
-    try:
-        v = float(v)
-        if abs(v) >= 1_000_000:
-            return f"R$ {v/1_000_000:.2f} mi".replace(".", ",")
-        if abs(v) >= 1_000:
-            return f"R$ {v/1_000:.0f} mil".replace(".", ",")
-        return moeda(v)
-    except Exception:
-        return "R$ 0,00"
-
+def moeda_card(v) -> str:
+    # Mantém valores completos também nos cards do painel.
+    return moeda(v)
 
 def pct(v) -> str:
     try:
@@ -908,14 +903,13 @@ if menu == "Painel Executivo":
                         <p class="hero-sub">{titulo}</p>
                         <p class="hero-sub" style="margin-top:4px;">{subtitulo}</p>
                     </div>
-                    <div class="hero-pill">Atualizado pela tabela do PDF</div>
+                    <div class="hero-pill">Análise da unidade aplicada</div>
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-        st.markdown('<div class="kpi-grid">', unsafe_allow_html=True)
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
             kpi_card("🏷️", "Preço total", moeda(d.get("preco_total", 0)), "Valor da tabela", "mid")
@@ -929,20 +923,11 @@ if menu == "Painel Executivo":
         with c5:
             score_val = ind.get("score", 0)
             kpi_card("⭐", "Score", f"{score_val:.1f}/10", "Nota executiva", "good" if score_val >= 7 else "mid" if score_val >= 5 else "bad")
-        st.markdown('</div>', unsafe_allow_html=True)
 
-        left, right = st.columns([1.25, 1])
-        with left:
-            st.markdown('<div class="panel-card">', unsafe_allow_html=True)
-            st.plotly_chart(fig_patrimonio(df), use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-        with right:
-            st.markdown('<div class="panel-card">', unsafe_allow_html=True)
-            st.plotly_chart(fig_fluxo(df), use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('<div class="executive-row"></div>', unsafe_allow_html=True)
+        col_resumo, col_fluxo, col_decisao = st.columns([1.08, 1.08, 1])
 
-        c1, c2, c3 = st.columns([1, 1, 1])
-        with c1:
+        with col_resumo:
             st.markdown('<div class="panel-card">', unsafe_allow_html=True)
             st.markdown('<div class="section-title">Resumo do ativo</div>', unsafe_allow_html=True)
             metric_line("Empreendimento", str(d.get("empreendimento", "")))
@@ -952,9 +937,10 @@ if menu == "Painel Executivo":
             metric_line("Preço total", moeda(d.get("preco_total", 0)))
             metric_line("Valor por m²", moeda(ind.get("valor_m2", 0)))
             st.markdown('</div>', unsafe_allow_html=True)
-        with c2:
+
+        with col_fluxo:
             st.markdown('<div class="panel-card">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">Fluxo extraído</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">Fluxo extraído / ajustado</div>', unsafe_allow_html=True)
             metric_line("Entrada", moeda(d.get("entrada", 0)))
             metric_line("Parcelas", f"{int(d.get('qtd_parcelas',0) or 0)}x de {moeda(d.get('valor_parcela',0))}")
             metric_line("Reforços até entrega", f"{int(d.get('qtd_reforcos_pre',0) or 0)}x de {moeda(d.get('reforco_pre_valor',0))}")
@@ -962,7 +948,8 @@ if menu == "Painel Executivo":
             metric_line("CUB simulado", pct(d.get("cub_anual", 0)))
             metric_line("Valorização simulada", pct(d.get("valorizacao_anual", 0)))
             st.markdown('</div>', unsafe_allow_html=True)
-        with c3:
+
+        with col_decisao:
             decision_html(ind.get("score", 0), ind.get("roi_entrega", 0))
             st.markdown('<div style="height:18px"></div>', unsafe_allow_html=True)
             st.markdown('<div class="panel-card">', unsafe_allow_html=True)
@@ -971,6 +958,16 @@ if menu == "Painel Executivo":
             metric_line("Investido na entrega", moeda(ind.get("investido_entrega", 0)))
             metric_line("Lucro bruto", moeda(ind.get("lucro_entrega", 0)))
             metric_line("ROI na entrega", pct(ind.get("roi_entrega", 0)))
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        chart_left, chart_right = st.columns([1.1, 1])
+        with chart_left:
+            st.markdown('<div class="panel-card chart-card">', unsafe_allow_html=True)
+            st.plotly_chart(fig_patrimonio(df), use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        with chart_right:
+            st.markdown('<div class="panel-card chart-card">', unsafe_allow_html=True)
+            st.plotly_chart(fig_fluxo(df), use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================
