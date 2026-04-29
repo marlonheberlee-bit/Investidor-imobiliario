@@ -227,15 +227,27 @@ def extrair_info_pagina_ap_towers(page_text: str) -> Dict:
 
 
 def extrair_areas_por_tipo(page_text: str) -> Dict[str, Dict]:
-    areas = {}
-    # Captura blocos finais tipo: TIPO 01\n1 Suíte +\n2 Dormitórios\n84,81m²
+    # Mapa fixo do AP Towers: o final da unidade define o tipo e a metragem.
+    # Ex.: 2401 termina com 01 => TIPO 01 => 84,81 m².
+    # Mantemos também a leitura por texto para outros PDFs parecidos.
+    areas = {
+        "01": {"tipo": "TIPO 01", "area": 84.81, "descricao_tipo": "1 Suíte + 2 Dormitórios"},
+        "02": {"tipo": "TIPO 02", "area": 85.87, "descricao_tipo": "1 Suíte + 2 Dormitórios"},
+        "03": {"tipo": "TIPO 03", "area": 83.50, "descricao_tipo": "1 Suíte + 2 Dormitórios"},
+        "04": {"tipo": "TIPO 04", "area": 83.50, "descricao_tipo": "1 Suíte + 2 Dormitórios"},
+        "05": {"tipo": "TIPO 05", "area": 85.87, "descricao_tipo": "1 Suíte + 2 Dormitórios"},
+        "06": {"tipo": "TIPO 06", "area": 90.93, "descricao_tipo": "1 Suíte + 2 Dormitórios"},
+    }
+
     pattern = re.compile(r"TIPO\s*(\d{2}).{0,90}?(\d{2,3}[,.]\d{2})\s*m[²2]", re.I | re.S)
     for tipo, area in pattern.findall(page_text):
-        areas[tipo] = {
-            "tipo": f"TIPO {tipo}",
-            "area": num_br(area),
-            "descricao_tipo": "1 Suíte + 2 Dormitórios",
-        }
+        area_lida = num_br(area)
+        if area_lida > 0:
+            areas[tipo] = {
+                "tipo": f"TIPO {tipo}",
+                "area": area_lida,
+                "descricao_tipo": "1 Suíte + 2 Dormitórios",
+            }
     return areas
 
 
@@ -293,7 +305,7 @@ def linhas_comerciais_ap_towers(page_text: str, page_number: int) -> List[Dict]:
                 "apartamento_grupo": m.group("apts"),
                 "tipo": area_info.get("tipo", f"TIPO {tipo_codigo}"),
                 "descricao_tipo": area_info.get("descricao_tipo", ""),
-                "area": area_info.get("area", 0.0),
+                "area": area_info.get("area", {"01":84.81,"02":85.87,"03":83.50,"04":83.50,"05":85.87,"06":90.93}.get(tipo_codigo, 0.0)),
                 "entrada": num_br(m.group("entrada")),
                 "qtd_parcelas": int(m.group("qtd")),
                 "valor_parcela": num_br(m.group("parcela")),
@@ -611,7 +623,7 @@ d = st.session_state.dados
 with st.sidebar:
     st.markdown('<div class="logo">🏢 ImobInvest</div>', unsafe_allow_html=True)
     st.markdown('<div class="logo-sub">ANÁLISE EXECUTIVA</div>', unsafe_allow_html=True)
-    menu = st.radio("Menu", ["Importar PDF", "Painel Executivo", "Dados e Premissas", "Fluxo Detalhado", "Relatório"], label_visibility="collapsed")
+    menu = st.radio("Menu", ["Importar PDF", "Painel Executivo", "Dados e Premissas", "Cenários", "Fluxo Detalhado", "Relatório"], label_visibility="collapsed")
     st.divider()
     st.caption("v3.0 painel premium + leitura por unidade.")
 
@@ -796,6 +808,98 @@ elif menu == "Dados e Premissas":
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================
+# ============================================================
+# CENÁRIOS
+# ============================================================
+elif menu == "Cenários":
+    st.markdown('<div class="hero-premium"><h1 class="hero-title">Cenários de CUB e Valorização</h1><p class="hero-sub">Simule cenários conservador, base e agressivo sem perder os dados extraídos do PDF.</p></div>', unsafe_allow_html=True)
+
+    if float(d.get("preco_total", 0) or 0) <= 0:
+        st.warning("Importe uma unidade primeiro para criar cenários.")
+    else:
+        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Premissas dos cenários</div>', unsafe_allow_html=True)
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown("**Conservador**")
+            cub_conservador = st.slider("CUB conservador a.a.", 0.0, 15.0, 6.0, 0.1, key="cub_conservador")
+            val_conservador = st.slider("Valorização conservadora a.a.", 0.0, 30.0, 8.0, 0.5, key="val_conservador")
+        with c2:
+            st.markdown("**Base**")
+            cub_base = st.slider("CUB base a.a.", 0.0, 15.0, float(d.get("cub_anual", 4.3) or 4.3), 0.1, key="cub_base")
+            val_base = st.slider("Valorização base a.a.", 0.0, 30.0, float(d.get("valorizacao_anual", 12.0) or 12.0), 0.5, key="val_base")
+        with c3:
+            st.markdown("**Agressivo**")
+            cub_agressivo = st.slider("CUB agressivo a.a.", 0.0, 15.0, 4.3, 0.1, key="cub_agressivo")
+            val_agressivo = st.slider("Valorização agressiva a.a.", 0.0, 30.0, 15.0, 0.5, key="val_agressivo")
+
+        cenarios = [
+            ("Conservador", cub_conservador, val_conservador),
+            ("Base", cub_base, val_base),
+            ("Agressivo", cub_agressivo, val_agressivo),
+        ]
+
+        linhas_cenarios = []
+        for nome, cub_c, val_c in cenarios:
+            temp = d.copy()
+            temp["cub_anual"] = cub_c
+            temp["valorizacao_anual"] = val_c
+            df_temp, ind_temp = indicadores(temp)
+            linhas_cenarios.append({
+                "Cenário": nome,
+                "CUB anual": cub_c,
+                "Valorização anual": val_c,
+                "Valor por m²": ind_temp.get("valor_m2", 0),
+                "Investido até entrega": ind_temp.get("investido_entrega", 0),
+                "Valor na entrega": ind_temp.get("valor_entrega", 0),
+                "Lucro na entrega": ind_temp.get("lucro_entrega", 0),
+                "ROI na entrega": ind_temp.get("roi_entrega", 0),
+                "Score": ind_temp.get("score", 0),
+            })
+
+        df_cenarios = pd.DataFrame(linhas_cenarios)
+
+        k1, k2, k3 = st.columns(3)
+        for col, row in zip([k1, k2, k3], linhas_cenarios):
+            with col:
+                kpi_card("📊", row["Cenário"], moeda_compacta(row["Lucro na entrega"]), f"ROI {pct(row['ROI na entrega'])} | Score {row['Score']:.1f}", "good" if row["Lucro na entrega"] > 0 else "bad")
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+            fig = go.Figure()
+            fig.add_trace(go.Bar(x=df_cenarios["Cenário"], y=df_cenarios["Lucro na entrega"], name="Lucro na entrega"))
+            fig.update_layout(title="Lucro na entrega por cenário", height=360, plot_bgcolor="white", paper_bgcolor="white", margin=dict(l=15, r=15, t=50, b=15), yaxis=dict(gridcolor="#e5e7eb"))
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        with c2:
+            st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+            fig = go.Figure()
+            fig.add_trace(go.Bar(x=df_cenarios["Cenário"], y=df_cenarios["ROI na entrega"], name="ROI na entrega"))
+            fig.update_layout(title="ROI na entrega por cenário", height=360, plot_bgcolor="white", paper_bgcolor="white", margin=dict(l=15, r=15, t=50, b=15), yaxis=dict(gridcolor="#e5e7eb"))
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Comparativo executivo</div>', unsafe_allow_html=True)
+        df_view = df_cenarios.copy()
+        for col in ["Valor por m²", "Investido até entrega", "Valor na entrega", "Lucro na entrega"]:
+            df_view[col] = df_view[col].apply(moeda)
+        for col in ["CUB anual", "Valorização anual", "ROI na entrega"]:
+            df_view[col] = df_view[col].apply(pct)
+        df_view["Score"] = df_view["Score"].map(lambda x: f"{x:.1f}/10")
+        st.dataframe(df_view, use_container_width=True, height=180)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        if st.button("Aplicar cenário base no painel"):
+            d["cub_anual"] = cub_base
+            d["valorizacao_anual"] = val_base
+            st.session_state.dados = d
+            st.success("Cenário base aplicado no painel executivo.")
+
 # FLUXO DETALHADO
 # ============================================================
 elif menu == "Fluxo Detalhado":
