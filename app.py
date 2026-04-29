@@ -83,6 +83,15 @@ html, body, [class*="css"] {font-family: 'Inter', sans-serif;}
 .metric-line span {color:#64748b;}
 .metric-line b {color:#0f172a;text-align:right;}
 
+
+.equal-card {
+    min-height: 405px;
+}
+
+.decision-box {
+    margin-bottom: 0 !important;
+}
+
 .decision-box {border-radius:24px;padding:22px;color:white;background:linear-gradient(135deg,#047857,#10b981);box-shadow:0 14px 32px rgba(4,120,87,.22);}
 .decision-box.midbox {background:linear-gradient(135deg,#b45309,#f59e0b);box-shadow:0 14px 32px rgba(180,83,9,.22);}
 .decision-box.badbox {background:linear-gradient(135deg,#991b1b,#ef4444);box-shadow:0 14px 32px rgba(153,27,27,.22);}
@@ -936,11 +945,18 @@ if menu == "Painel Executivo":
             score_val = ind.get("score", 0)
             kpi_card("⭐", "Score", f"{score_val:.1f}/10", "Nota executiva", "good" if score_val >= 7 else "mid" if score_val >= 5 else "bad")
 
-        st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
-        col_resumo, col_fluxo, col_decisao = st.columns([1.08, 1.08, 1])
+        st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
+
+        # Faixa executiva horizontal: decisão + score sem espremer o layout lateral
+        decision_html(ind.get("score", 0), ind.get("roi_entrega", 0))
+
+        st.markdown('<div style="height:18px"></div>', unsafe_allow_html=True)
+
+        # Linha 1: dados do ativo e fluxo da proposta
+        col_resumo, col_fluxo = st.columns(2)
 
         with col_resumo:
-            st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+            st.markdown('<div class="panel-card equal-card">', unsafe_allow_html=True)
             st.markdown('<div class="section-title">Resumo do ativo</div>', unsafe_allow_html=True)
             metric_line("Empreendimento", str(d.get("empreendimento", "")))
             metric_line("Torre / unidade", f"{d.get('torre','')} / {d.get('unidade','')}")
@@ -951,7 +967,7 @@ if menu == "Painel Executivo":
             st.markdown('</div>', unsafe_allow_html=True)
 
         with col_fluxo:
-            st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+            st.markdown('<div class="panel-card equal-card">', unsafe_allow_html=True)
             st.markdown('<div class="section-title">Fluxo extraído / ajustado</div>', unsafe_allow_html=True)
             metric_line("Entrada", moeda(d.get("entrada", 0)))
             metric_line("Parcelas", f"{int(d.get('qtd_parcelas',0) or 0)}x de {moeda(d.get('valor_parcela',0))}")
@@ -961,18 +977,44 @@ if menu == "Painel Executivo":
             metric_line("Valorização simulada", pct(d.get("valorizacao_anual", 0)))
             st.markdown('</div>', unsafe_allow_html=True)
 
-        with col_decisao:
-            decision_html(ind.get("score", 0), ind.get("roi_entrega", 0))
-            st.markdown('<div style="height:18px"></div>', unsafe_allow_html=True)
-            st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+        st.markdown('<div style="height:18px"></div>', unsafe_allow_html=True)
+
+        # Linha 2: retorno e decisão operacional
+        col_retorno, col_estrategia = st.columns(2)
+
+        with col_retorno:
+            st.markdown('<div class="panel-card equal-card">', unsafe_allow_html=True)
             st.markdown('<div class="section-title">Retorno projetado</div>', unsafe_allow_html=True)
             metric_line("Valor na entrega", moeda(ind.get("valor_entrega", 0)))
             metric_line("Investido na entrega", moeda(ind.get("investido_entrega", 0)))
-            metric_line("Lucro bruto", moeda(ind.get("lucro_entrega", 0)))
+            metric_line("Saldo a assumir na entrega", moeda(ind.get("saldo_devedor_entrega", 0)))
+            metric_line("Lucro líquido na entrega", moeda(ind.get("lucro_entrega", 0)))
             metric_line("ROI na entrega", pct(ind.get("roi_entrega", 0)))
+            metric_line("Valor projetado final", moeda(ind.get("valor_final", 0)))
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        with col_estrategia:
+            st.markdown('<div class="panel-card equal-card">', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">Decisão executiva</div>', unsafe_allow_html=True)
+            score_val = ind.get("score", 0)
+            if score_val >= 8:
+                status = "Oportunidade forte"
+                leitura = "Prioridade para análise documental, negociação e validação de liquidez."
+            elif score_val >= 6:
+                status = "Boa oportunidade"
+                leitura = "Avançar com cautela, validando preço de revenda, prazo e força da construtora."
+            else:
+                status = "Cautela"
+                leitura = "Comparar com outras unidades antes de assumir o fluxo."
+            metric_line("Status", status)
+            metric_line("Score", f"{score_val:.1f}/10")
+            metric_line("Risco", str(d.get("risco", "Médio")))
+            metric_line("Liquidez", str(d.get("liquidez", "Alta")))
+            metric_line("Estratégia", leitura)
             st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown('<div style="height:18px"></div>', unsafe_allow_html=True)
+
         chart_left, chart_right = st.columns([1.1, 1])
         with chart_left:
             st.plotly_chart(fig_patrimonio(df), use_container_width=True)
