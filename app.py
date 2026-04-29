@@ -1,862 +1,805 @@
-import re
-import math
-from datetime import date
-from typing import List, Dict, Optional, Tuple
-
-import pandas as pd
 import streamlit as st
+import pandas as pd
+import numpy as np
+import re
+from datetime import datetime
+import plotly.graph_objects as go
+import plotly.express as px
 
 try:
     import pdfplumber
-except Exception:
+except:
     pdfplumber = None
-
-try:
-    import pytesseract
-except Exception:
-    pytesseract = None
 
 
 st.set_page_config(
-    page_title="Analisador Imobiliário Profissional",
+    page_title="Painel Executivo Imobiliário",
     page_icon="🏢",
-    layout="wide",
+    layout="wide"
 )
 
 
 # =========================
-# FUNÇÕES BÁSICAS
+# CSS PROFISSIONAL
 # =========================
-
-def brl_to_float(valor) -> float:
-    if valor is None:
-        return 0.0
-
-    v = str(valor)
-    v = v.replace("R$", "")
-    v = v.replace("m²", "")
-    v = v.replace("m2", "")
-    v = v.replace(" ", "")
-    v = v.strip()
-
-    if "," in v:
-        v = v.replace(".", "").replace(",", ".")
-    else:
-        v = v.replace(",", "")
-
-    try:
-        return float(v)
-    except Exception:
-        return 0.0
-
-
-def float_to_brl(valor: float) -> str:
-    try:
-        valor = float(valor)
-    except Exception:
-        valor = 0.0
-
-    s = f"R$ {valor:,.2f}"
-    return s.replace(",", "X").replace(".", ",").replace("X", ".")
-
-
-def pct(valor: float) -> str:
-    try:
-        valor = float(valor)
-    except Exception:
-        valor = 0.0
-    return f"{valor:.2f}%".replace(".", ",")
-
-
-def normalizar_texto(txt: str) -> str:
-    txt = txt.replace("\xa0", " ")
-    txt = re.sub(r"[ \t]+", " ", txt)
-    return txt
-
-
-# =========================
-# LEITURA DO PDF
-# =========================
-
-def extrair_texto_pdf(uploaded_file, usar_ocr=False) -> List[Dict]:
-    paginas = []
-
-    if pdfplumber is None:
-        st.error("Biblioteca pdfplumber não encontrada. Adicione pdfplumber no requirements.txt")
-        return paginas
-
-    with pdfplumber.open(uploaded_file) as pdf:
-        for i, page in enumerate(pdf.pages, start=1):
-            texto = page.extract_text() or ""
-            texto = normalizar_texto(texto)
-
-            if usar_ocr and len(texto.strip()) < 100 and pytesseract is not None:
-                try:
-                    img = page.to_image(resolution=200).original
-                    texto_ocr = pytesseract.image_to_string(img, lang="por+eng")
-                    texto = normalizar_texto(texto_ocr)
-                except Exception:
-                    pass
-
-            paginas.append({
-                "pagina": i,
-                "texto": texto
-            })
-
-    return paginas
-
-
-# =========================
-# EXTRAÇÃO DE DADOS DO PDF
-# =========================
-
-def extrair_reais(linha: str) -> List[str]:
-    return re.findall(r"R\$\s?\d{1,3}(?:\.\d{3})*,\d{2}", linha)
-
-
-def extrair_parcela(linha: str) -> Tuple[Optional[int], Optional[float]]:
-    m = re.search(
-        r"(\d+)\s*x\s*R\$\s?\d{1,3}(?:\.\d{3})*,\d{2}",
-        linha,
-        flags=re.I
-    )
-
-    if not m:
-        return None, None
-
-    qtd = int(m.group(1))
-    trecho = linha[m.start():m.end()]
-    valores = extrair_reais(trecho)
-    valor = brl_to_float(valores[0]) if valores else 0.0
-
-    return qtd, valor
-
-
-def parse_unidades_expr(expr: str) -> List[int]:
-    expr = expr.strip()
-    expr = re.sub(r"[^0-9eao\s]", " ", expr, flags=re.I)
-    expr = re.sub(r"\s+", " ", expr).strip()
-
-    nums = [int(x) for x in re.findall(r"\d{3,4}", expr)]
-    unidades = set()
-
-    if " ao " in f" {expr.lower()} " and len(nums) >= 2:
-        ini, fim = nums[0], nums[1]
-
-        sufixo_ini = ini % 100
-        sufixo_fim = fim % 100
-        andar_ini = ini // 100
-        andar_fim = fim // 100
-
-        if sufixo_ini == sufixo_fim and andar_ini <= andar_fim:
-            for andar in range(andar_ini, andar_fim + 1):
-                unidades.add(andar * 100 + sufixo_ini)
-        elif ini <= fim:
-            for u in range(ini, fim + 1):
-                unidades.add(u)
-    else:
-        for n in nums:
-            unidades.add(n)
-
-    return sorted(unidades)
-
-
-def extrair_expr_apartamento(linha: str) -> str:
-    parte = linha.split("R$")[0].strip()
-    parte = re.sub(r"^(TIPO\s*\d+\s*)", "", parte, flags=re.I).strip()
-    return parte
-
-
-def identificar_torre_entrega(texto_pagina: str):
-    torre = None
-    entrega = None
-    localizacao = None
-
-    m = re.search(
-        r"TORRE\s*(\d+)\s*-\s*ENTREGA\s*EM\s*(\d{4})",
-        texto_pagina,
-        flags=re.I
-    )
-
-    if m:
-        torre = f"TORRE {int(m.group(1)):02d}"
-        entrega = int(m.group(2))
-
-    mloc = re.search(
-        r"LOCALIZAÇÃO\s*-\s*(.+?)(?:Disponível|TIPO|\n|$)",
-        texto_pagina,
-        flags=re.I
-    )
-
-    if mloc:
-        localizacao = mloc.group(1).strip()
-
-    return torre, entrega, localizacao
-
-
-def extrair_tipos(texto_total: str) -> Dict[str, Dict]:
-    tipos = {
-        "01": {"tipo": "TIPO 01", "area_m2": 84.81},
-        "02": {"tipo": "TIPO 02", "area_m2": 85.87},
-        "03": {"tipo": "TIPO 03", "area_m2": 83.50},
-        "04": {"tipo": "TIPO 04", "area_m2": 83.50},
-        "05": {"tipo": "TIPO 05", "area_m2": 85.87},
-        "06": {"tipo": "TIPO 06", "area_m2": 90.93},
-    }
-
-    for m in re.finditer(
-        r"TIPO\s*(\d{1,2}).{0,250}?(\d{2,3}[,.]\d{2})\s*m",
-        texto_total,
-        flags=re.I | re.S
-    ):
-        cod = m.group(1).zfill(2)
-        area = brl_to_float(m.group(2))
-
-        if area > 0:
-            tipos[cod] = {
-                "tipo": f"TIPO {cod}",
-                "area_m2": area
-            }
-
-    return tipos
-
-
-def parsear_linhas(paginas: List[Dict]) -> pd.DataFrame:
-    registros = []
-    texto_total = "\n".join(p["texto"] for p in paginas)
-    tipos = extrair_tipos(texto_total)
-
-    for p in paginas:
-        pagina = p["pagina"]
-        texto = p["texto"]
-        torre, entrega, localizacao = identificar_torre_entrega(texto)
-
-        linhas = [l.strip() for l in texto.split("\n") if l.strip()]
-
-        for linha in linhas:
-            valores = extrair_reais(linha)
-            tem_parcela = re.search(r"\d+\s*x\s*R\$", linha, flags=re.I)
-
-            if len(valores) >= 4 and tem_parcela:
-                expr_apt = extrair_expr_apartamento(linha)
-                unidades = parse_unidades_expr(expr_apt)
-                qtd_parcelas, valor_parcela = extrair_parcela(linha)
-
-                entrada = brl_to_float(valores[0])
-                total = brl_to_float(valores[-1])
-                reforcos = [brl_to_float(v) for v in valores[2:-1]]
-
-                reforco_antes = reforcos[0] if len(reforcos) >= 1 else 0
-                reforco_depois = reforcos[1] if len(reforcos) >= 2 else 0
-
-                for unidade in unidades:
-                    final_tipo = str(unidade)[-2:]
-                    info_tipo = tipos.get(final_tipo, {})
-
-                    registros.append({
-                        "pagina": pagina,
-                        "torre": torre,
-                        "entrega": entrega,
-                        "localizacao": localizacao,
-                        "apartamento": str(unidade),
-                        "grupo_pdf": expr_apt,
-                        "tipo": info_tipo.get("tipo", f"TIPO {final_tipo}"),
-                        "area_m2": info_tipo.get("area_m2", None),
-                        "entrada": entrada,
-                        "qtd_parcelas": qtd_parcelas or 0,
-                        "valor_parcela": valor_parcela or 0,
-                        "reforco_antes_entrega": reforco_antes,
-                        "reforco_depois_entrega": reforco_depois,
-                        "total_tabela": total,
-                        "linha_original": linha
-                    })
-
-    df = pd.DataFrame(registros)
-
-    if not df.empty:
-        df = df.drop_duplicates(
-            subset=["torre", "apartamento", "entrada", "valor_parcela", "total_tabela"]
-        )
-
-    return df
-
-
-# =========================
-# CÁLCULO FINANCEIRO
-# =========================
-
-def calcular_investimento(row, valorizacao_anual, cub_anual, ano_atual, ano_venda, considerar_cub):
-    entrega = int(row.get("entrega") or ano_atual)
-
-    meses_total = int(row.get("qtd_parcelas") or 0)
-    valor_parcela = float(row.get("valor_parcela") or 0)
-    entrada = float(row.get("entrada") or 0)
-    total_tabela = float(row.get("total_tabela") or 0)
-    reforco_antes = float(row.get("reforco_antes_entrega") or 0)
-    reforco_depois = float(row.get("reforco_depois_entrega") or 0)
-
-    meses_ate_entrega = max(0, (entrega - ano_atual) * 12)
-    meses_ate_venda = max(0, (ano_venda - ano_atual) * 12)
-
-    tx_val_mensal = (1 + valorizacao_anual / 100) ** (1 / 12) - 1
-    tx_cub_mensal = (1 + cub_anual / 100) ** (1 / 12) - 1
-
-    fluxo = []
-    saldo_aportado = entrada
-
-    fluxo.append({
-        "Mês": 0,
-        "Descrição": "Entrada",
-        "Aporte": entrada,
-        "Valor projetado do imóvel": total_tabela
-    })
-
-    for mes in range(1, meses_ate_venda + 1):
-        fator_cub = ((1 + tx_cub_mensal) ** mes) if considerar_cub else 1
-
-        aporte = 0.0
-        descricao = []
-
-        if mes <= meses_total:
-            aporte += valor_parcela * fator_cub
-            descricao.append("Parcela")
-
-        if reforco_antes > 0 and mes <= meses_ate_entrega and mes % 6 == 0:
-            aporte += reforco_antes * fator_cub
-            descricao.append("Reforço antes da entrega")
-
-        if reforco_depois > 0 and mes > meses_ate_entrega and mes <= meses_total and mes % 6 == 0:
-            aporte += reforco_depois * fator_cub
-            descricao.append("Reforço após entrega")
-
-        saldo_aportado += aporte
-        valor_imovel = total_tabela * ((1 + tx_val_mensal) ** mes)
-
-        fluxo.append({
-            "Mês": mes,
-            "Descrição": ", ".join(descricao),
-            "Aporte": aporte,
-            "Valor projetado do imóvel": valor_imovel
-        })
-
-    valor_venda = total_tabela * ((1 + tx_val_mensal) ** meses_ate_venda)
-    lucro_bruto = valor_venda - saldo_aportado
-    roi_total = (lucro_bruto / saldo_aportado * 100) if saldo_aportado > 0 else 0
-
-    if meses_ate_venda > 0 and saldo_aportado > 0:
-        roi_ano = ((1 + roi_total / 100) ** (12 / meses_ate_venda) - 1) * 100
-    else:
-        roi_ano = 0
-
-    area = row.get("area_m2")
-    preco_m2 = total_tabela / area if area and not pd.isna(area) else None
-
-    nota = 5.0
-
-    if roi_ano >= 25:
-        nota += 2.0
-    elif roi_ano >= 18:
-        nota += 1.5
-    elif roi_ano >= 12:
-        nota += 1.0
-    elif roi_ano >= 8:
-        nota += 0.5
-    else:
-        nota -= 0.5
-
-    if meses_ate_entrega <= 36:
-        nota += 0.8
-    elif meses_ate_entrega >= 60:
-        nota -= 0.5
-
-    if preco_m2 and preco_m2 < 16000:
-        nota += 0.7
-    elif preco_m2 and preco_m2 > 22000:
-        nota -= 0.7
-
-    nota = max(0, min(10, nota))
-
-    resumo = {
-        "meses_ate_entrega": meses_ate_entrega,
-        "meses_ate_venda": meses_ate_venda,
-        "valor_venda_projetado": valor_venda,
-        "valor_aportado_ate_venda": saldo_aportado,
-        "lucro_bruto": lucro_bruto,
-        "roi_total": roi_total,
-        "roi_ano": roi_ano,
-        "preco_m2": preco_m2,
-        "nota": nota
-    }
-
-    return resumo, pd.DataFrame(fluxo)
-
-
-# =========================
-# CSS
-# =========================
-
 st.markdown("""
 <style>
-.block-container {
-    padding-top: 2rem;
-    padding-bottom: 3rem;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
 }
 
-.executive-title {
-    font-size: 34px;
-    font-weight: 900;
-    color: #101828;
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #061936 0%, #031024 100%);
+}
+
+[data-testid="stSidebar"] * {
+    color: white !important;
+}
+
+.main {
+    background: #f5f7fb;
+}
+
+.block-container {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+}
+
+.hero-title {
+    font-size: 36px;
+    font-weight: 800;
+    color: #081a3a;
     margin-bottom: 4px;
 }
 
-.executive-subtitle {
+.hero-subtitle {
     font-size: 16px;
-    color: #667085;
-    margin-bottom: 26px;
+    color: #64748b;
+    margin-bottom: 24px;
 }
 
-.card-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 16px;
-    margin-bottom: 18px;
-}
-
-.card {
-    background: linear-gradient(135deg, #ffffff 0%, #f7f9fc 100%);
-    border: 1px solid #e4e7ec;
-    border-radius: 20px;
-    padding: 20px;
-    box-shadow: 0 8px 22px rgba(16, 24, 40, 0.07);
-    min-height: 124px;
-}
-
-.card-label {
-    font-size: 13px;
-    color: #667085;
-    font-weight: 600;
-    margin-bottom: 8px;
-}
-
-.card-value {
-    font-size: 22px;
-    font-weight: 900;
-    color: #101828;
-    line-height: 1.2;
-}
-
-.card-small {
-    font-size: 13px;
-    color: #667085;
-    margin-top: 8px;
-}
-
-.card-good {
-    border-left: 7px solid #12b76a;
-}
-
-.card-warning {
-    border-left: 7px solid #f79009;
-}
-
-.card-danger {
-    border-left: 7px solid #f04438;
-}
-
-.big-card {
-    background: linear-gradient(135deg, #101828 0%, #1d2939 100%);
-    color: white;
-    border-radius: 24px;
-    padding: 28px;
-    margin: 22px 0;
-    box-shadow: 0 12px 30px rgba(16, 24, 40, 0.25);
-}
-
-.big-card-title {
-    font-size: 17px;
-    color: #d0d5dd;
-    font-weight: 600;
-}
-
-.big-card-value {
-    font-size: 42px;
-    font-weight: 950;
-    margin-top: 8px;
-}
-
-.info-box {
+.kpi-card {
     background: white;
-    border: 1px solid #e4e7ec;
-    border-radius: 18px;
-    padding: 18px;
-    margin-top: 12px;
-    box-shadow: 0 5px 16px rgba(16, 24, 40, 0.05);
+    padding: 24px;
+    border-radius: 22px;
+    box-shadow: 0 12px 35px rgba(15, 23, 42, 0.08);
+    border: 1px solid #e5eaf3;
+    min-height: 150px;
+}
+
+.kpi-label {
+    color: #64748b;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.kpi-value {
+    color: #071735;
+    font-size: 30px;
+    font-weight: 800;
+    margin-top: 10px;
+}
+
+.kpi-positive {
+    color: #059669;
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 8px;
+}
+
+.kpi-negative {
+    color: #dc2626;
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 8px;
+}
+
+.panel-card {
+    background: white;
+    padding: 24px;
+    border-radius: 24px;
+    box-shadow: 0 12px 35px rgba(15, 23, 42, 0.07);
+    border: 1px solid #e5eaf3;
+    margin-bottom: 20px;
 }
 
 .section-title {
-    font-size: 24px;
-    font-weight: 850;
-    color: #101828;
-    margin-top: 28px;
+    color: #081a3a;
+    font-size: 20px;
+    font-weight: 800;
     margin-bottom: 12px;
 }
 
-@media (max-width: 1200px) {
-    .card-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
+.badge-good {
+    background: #dcfce7;
+    color: #166534;
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-weight: 700;
+    display: inline-block;
 }
 
-@media (max-width: 700px) {
-    .card-grid {
-        grid-template-columns: 1fr;
-    }
+.badge-mid {
+    background: #fef3c7;
+    color: #92400e;
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-weight: 700;
+    display: inline-block;
+}
 
-    .big-card-value {
-        font-size: 30px;
-    }
+.badge-bad {
+    background: #fee2e2;
+    color: #991b1b;
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-weight: 700;
+    display: inline-block;
+}
+
+.metric-line {
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid #edf2f7;
+    padding: 10px 0;
+    font-size: 15px;
+}
+
+.metric-line b {
+    color: #0f172a;
+}
+
+.sidebar-logo {
+    font-size: 25px;
+    font-weight: 800;
+    margin-bottom: 4px;
+}
+
+.sidebar-sub {
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: #93c5fd !important;
+    margin-bottom: 25px;
+}
+
+.stButton > button {
+    background: linear-gradient(90deg, #2563eb, #4f46e5);
+    color: white;
+    border-radius: 14px;
+    border: none;
+    padding: 0.7rem 1.2rem;
+    font-weight: 700;
+}
+
+.stButton > button:hover {
+    background: linear-gradient(90deg, #1d4ed8, #4338ca);
+    color: white;
 }
 </style>
 """, unsafe_allow_html=True)
 
 
 # =========================
-# APP
+# FUNÇÕES
 # =========================
+def moeda(v):
+    try:
+        return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return "R$ 0,00"
 
-st.title("🏢 Analisador Imobiliário Profissional + Leitor de PDF")
-st.caption("Upload de tabela da construtora, busca por apartamento e relatório automático de investimento.")
 
+def pct(v):
+    try:
+        return f"{v:.2f}%".replace(".", ",")
+    except:
+        return "0,00%"
+
+
+def numero_br(v):
+    try:
+        return f"{v:,.0f}".replace(",", ".")
+    except:
+        return "0"
+
+
+def extrair_texto_pdf(uploaded_file):
+    if pdfplumber is None:
+        return ""
+
+    texto = ""
+    try:
+        with pdfplumber.open(uploaded_file) as pdf:
+            for page in pdf.pages:
+                t = page.extract_text()
+                if t:
+                    texto += "\n" + t
+    except:
+        texto = ""
+    return texto
+
+
+def tentar_extrair_valores(texto):
+    dados = {}
+
+    valores = re.findall(r'R\$\s?[\d\.\,]+', texto)
+    areas = re.findall(r'(\d{2,3}[\,\.]?\d*)\s?m²', texto.lower())
+
+    if valores:
+        nums = []
+        for v in valores:
+            limpo = v.replace("R$", "").replace(".", "").replace(",", ".").strip()
+            try:
+                nums.append(float(limpo))
+            except:
+                pass
+        if nums:
+            dados["preco_total"] = max(nums)
+
+    if areas:
+        try:
+            dados["area"] = float(areas[0].replace(",", "."))
+        except:
+            pass
+
+    aptos = re.findall(r'(apto|apartamento|unidade)\s?[:\-]?\s?(\d+)', texto.lower())
+    if aptos:
+        dados["unidade"] = aptos[0][1]
+
+    return dados
+
+
+def calcular_nota(roi_entrega, valor_m2, valor_m2_ref, risco, prazo_entrega):
+    nota = 5
+
+    if roi_entrega >= 60:
+        nota += 2
+    elif roi_entrega >= 35:
+        nota += 1
+    elif roi_entrega < 20:
+        nota -= 1
+
+    if valor_m2_ref > 0:
+        desconto = (valor_m2_ref - valor_m2) / valor_m2_ref
+        if desconto >= 0.15:
+            nota += 1.5
+        elif desconto >= 0.05:
+            nota += 0.7
+        elif desconto < -0.05:
+            nota -= 1
+
+    if risco == "Baixo":
+        nota += 1
+    elif risco == "Alto":
+        nota -= 1.5
+
+    if prazo_entrega <= 24:
+        nota += 0.7
+    elif prazo_entrega >= 60:
+        nota -= 0.7
+
+    return max(0, min(10, nota))
+
+
+def grafico_linha(df, x, y, titulo):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df[x],
+        y=df[y],
+        mode="lines+markers",
+        fill="tozeroy",
+        line=dict(width=4),
+        marker=dict(size=8),
+        name=titulo
+    ))
+    fig.update_layout(
+        title=titulo,
+        height=360,
+        margin=dict(l=20, r=20, t=50, b=20),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        font=dict(color="#0f172a"),
+        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=True, gridcolor="#e5e7eb")
+    )
+    return fig
+
+
+def grafico_barras(df, x, y, titulo):
+    fig = px.bar(df, x=x, y=y, text_auto=True)
+    fig.update_layout(
+        title=titulo,
+        height=360,
+        margin=dict(l=20, r=20, t=50, b=20),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        font=dict(color="#0f172a"),
+        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=True, gridcolor="#e5e7eb")
+    )
+    return fig
+
+
+# =========================
+# SIDEBAR
+# =========================
 with st.sidebar:
-    st.header("Parâmetros de análise")
+    st.markdown('<div class="sidebar-logo">🏢 ImobInvest</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-sub">ANÁLISE EXECUTIVA</div>', unsafe_allow_html=True)
 
-    ano_atual = st.number_input(
-        "Ano base",
-        min_value=2024,
-        max_value=2040,
-        value=date.today().year,
-        step=1
+    menu = st.radio(
+        "Menu",
+        [
+            "Painel Executivo",
+            "Cadastro do Imóvel",
+            "Fluxo de Pagamento",
+            "Comparativo",
+            "Relatório"
+        ],
+        label_visibility="collapsed"
     )
 
-    ano_venda = st.number_input(
-        "Ano projetado para venda",
-        min_value=int(ano_atual),
-        max_value=2050,
-        value=max(int(ano_atual) + 5, 2031),
-        step=1
-    )
-
-    valorizacao_anual = st.slider(
-        "Valorização anual esperada",
-        0.0,
-        30.0,
-        12.0,
-        0.5
-    )
-
-    cub_anual = st.slider(
-        "CUB/INCC anual estimado",
-        0.0,
-        20.0,
-        4.3,
-        0.1
-    )
-
-    considerar_cub = st.checkbox(
-        "Corrigir parcelas/reforços pelo CUB estimado",
-        value=True
-    )
-
-    usar_ocr = st.checkbox(
-        "Tentar OCR se o PDF vier como imagem",
-        value=False
-    )
+    st.divider()
+    st.caption("Painel profissional para análise de oportunidades imobiliárias.")
 
 
-uploaded = st.file_uploader("Envie o PDF da construtora", type=["pdf"])
+# =========================
+# ESTADO
+# =========================
+if "dados" not in st.session_state:
+    st.session_state.dados = {
+        "empreendimento": "Residencial Vista Mar",
+        "localizacao": "Porto Belo / SC",
+        "unidade": "1201",
+        "tipo": "Apartamento",
+        "area": 90.0,
+        "vagas": 2,
+        "preco_total": 1351000.0,
+        "entrada": 120000.0,
+        "parcelas_mensais": 48,
+        "valor_parcela": 6500.0,
+        "reforco_pre": 30000.0,
+        "qtd_reforcos_pre": 4,
+        "reforco_pos": 25000.0,
+        "qtd_reforcos_pos": 6,
+        "cub_anual": 4.3,
+        "valorizacao_anual": 12.0,
+        "valor_m2_ref": 17000.0,
+        "prazo_entrega": 36,
+        "risco": "Médio"
+    }
 
 
-if uploaded:
-    paginas = extrair_texto_pdf(uploaded, usar_ocr=usar_ocr)
-    df = parsear_linhas(paginas)
+dados = st.session_state.dados
 
-    if df.empty:
-        st.error("Não consegui estruturar a tabela financeira automaticamente.")
-        with st.expander("Ver texto bruto extraído"):
-            st.text("\n\n".join([p["texto"] for p in paginas])[:20000])
-        st.stop()
 
-    st.success(f"PDF lido com sucesso. {len(df)} unidades interpretadas.")
+# =========================
+# CADASTRO
+# =========================
+if menu == "Cadastro do Imóvel":
+    st.markdown('<div class="hero-title">Cadastro do Imóvel</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero-subtitle">Alimente os dados manualmente ou envie um PDF da construtora.</div>', unsafe_allow_html=True)
 
-    col_busca1, col_busca2 = st.columns([1, 1])
+    col_pdf, col_manual = st.columns([1, 2])
 
-    with col_busca1:
-        unidade_digitada = st.text_input(
-            "Digite o número do apartamento/unidade",
-            placeholder="Ex: 1203"
-        )
+    with col_pdf:
+        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Leitura de PDF</div>', unsafe_allow_html=True)
+        arquivo = st.file_uploader("Enviar PDF da construtora", type=["pdf"])
 
-    with col_busca2:
-        torres = sorted([x for x in df["torre"].dropna().unique()])
-        torre_filtro = st.selectbox(
-            "Filtrar torre",
-            ["Todas"] + torres
-        )
+        if arquivo:
+            texto = extrair_texto_pdf(arquivo)
+            extraidos = tentar_extrair_valores(texto)
 
-    df_filtrado = df.copy()
+            if extraidos:
+                st.success("Algumas informações foram identificadas no PDF.")
 
-    if torre_filtro != "Todas":
-        df_filtrado = df_filtrado[df_filtrado["torre"] == torre_filtro]
+                if "preco_total" in extraidos:
+                    dados["preco_total"] = extraidos["preco_total"]
 
-    if unidade_digitada:
-        unidade_limpa = re.sub(r"\D", "", unidade_digitada)
-        df_match = df_filtrado[df_filtrado["apartamento"].astype(str) == unidade_limpa]
-    else:
-        df_match = pd.DataFrame()
+                if "area" in extraidos:
+                    dados["area"] = extraidos["area"]
 
-    aba1, aba2, aba3 = st.tabs([
-        "🔎 Painel executivo",
-        "📊 Base extraída",
-        "🧾 Texto bruto"
-    ])
+                if "unidade" in extraidos:
+                    dados["unidade"] = extraidos["unidade"]
 
-    with aba1:
-        if unidade_digitada and not df_match.empty:
-            if len(df_match) > 1:
-                st.info("Essa unidade apareceu em mais de uma torre. Escolha qual deseja analisar.")
-
-            opcoes = []
-
-            for idx, r in df_match.iterrows():
-                opcoes.append((
-                    idx,
-                    f"{r['torre']} | Apto {r['apartamento']} | Entrega {r['entrega']} | Total {float_to_brl(r['total_tabela'])}"
-                ))
-
-            escolhido = st.selectbox(
-                "Selecione a opção",
-                opcoes,
-                format_func=lambda x: x[1]
-            )
-
-            row = df.loc[escolhido[0]]
-
-            resumo, fluxo = calcular_investimento(
-                row,
-                valorizacao_anual,
-                cub_anual,
-                int(ano_atual),
-                int(ano_venda),
-                considerar_cub
-            )
-
-            nota = resumo["nota"]
-
-            if nota >= 8:
-                classe_nota = "card-good"
-                texto_nota = "Excelente oportunidade"
-                leitura = "Oportunidade forte. O fluxo, a valorização projetada e o retorno estimado indicam um investimento atrativo."
-            elif nota >= 6.5:
-                classe_nota = "card-warning"
-                texto_nota = "Oportunidade moderada"
-                leitura = "Oportunidade razoável. Vale comparar com outras unidades, principalmente preço por m², prazo de entrega e fluxo de reforços."
+                st.session_state.dados = dados
             else:
-                classe_nota = "card-danger"
-                texto_nota = "Atenção ao investimento"
-                leitura = "Oportunidade fraca nos parâmetros atuais. Reavalie preço, prazo, valorização esperada e volume de aportes."
+                st.warning("Não consegui extrair dados suficientes automaticamente. Preencha manualmente ao lado.")
 
-            area_texto = (
-                f"{float(row['area_m2']):.2f} m²".replace(".", ",")
-                if pd.notna(row["area_m2"])
-                else "Área não identificada"
-            )
+            with st.expander("Ver texto extraído"):
+                st.text_area("Texto do PDF", texto, height=300)
 
-            preco_m2_texto = (
-                float_to_brl(resumo["preco_m2"])
-                if resumo["preco_m2"]
-                else "Não identificado"
-            )
+        st.markdown('</div>', unsafe_allow_html=True)
 
-            resultado_operacao = resumo["valor_aportado_ate_venda"] + resumo["lucro_bruto"]
+    with col_manual:
+        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Dados principais</div>', unsafe_allow_html=True)
 
-            html_painel = f"""
-<div class="executive-title">Painel Executivo — {row['torre']} | Apartamento {row['apartamento']}</div>
-<div class="executive-subtitle">Entrega em {row['entrega']} • {row['tipo']} • {area_texto} • Projeção de venda em {ano_venda}</div>
+        c1, c2, c3 = st.columns(3)
 
-<div class="card-grid">
-<div class="card">
-<div class="card-label">Preço total de tabela</div>
-<div class="card-value">{float_to_brl(row["total_tabela"])}</div>
-<div class="card-small">Valor informado no PDF</div>
-</div>
+        with c1:
+            dados["empreendimento"] = st.text_input("Empreendimento", dados["empreendimento"])
+            dados["localizacao"] = st.text_input("Localização", dados["localizacao"])
+            dados["unidade"] = st.text_input("Unidade", dados["unidade"])
 
-<div class="card">
-<div class="card-label">Entrada</div>
-<div class="card-value">{float_to_brl(row["entrada"])}</div>
-<div class="card-small">Aporte inicial</div>
-</div>
+        with c2:
+            dados["tipo"] = st.selectbox("Tipo", ["Apartamento", "Flat", "Terreno", "Casa", "Sala Comercial"], index=0)
+            dados["area"] = st.number_input("Área privativa m²", min_value=1.0, value=float(dados["area"]))
+            dados["vagas"] = st.number_input("Vagas", min_value=0, value=int(dados["vagas"]))
 
-<div class="card">
-<div class="card-label">Parcela mensal</div>
-<div class="card-value">{int(row["qtd_parcelas"])}x {float_to_brl(row["valor_parcela"])}</div>
-<div class="card-small">Antes de reajuste CUB/INCC</div>
-</div>
+        with c3:
+            dados["preco_total"] = st.number_input("Preço total", min_value=0.0, value=float(dados["preco_total"]), step=10000.0)
+            dados["valor_m2_ref"] = st.number_input("Valor m² médio da região", min_value=0.0, value=float(dados["valor_m2_ref"]), step=500.0)
+            dados["prazo_entrega"] = st.number_input("Prazo até entrega em meses", min_value=1, value=int(dados["prazo_entrega"]))
 
-<div class="card {classe_nota}">
-<div class="card-label">Nota do investimento</div>
-<div class="card-value">{str(round(resumo["nota"], 1)).replace(".", ",")}/10</div>
-<div class="card-small">{texto_nota}</div>
-</div>
-</div>
+        st.markdown('</div>', unsafe_allow_html=True)
 
-<div class="card-grid">
-<div class="card">
-<div class="card-label">Valor projetado de venda</div>
-<div class="card-value">{float_to_brl(resumo["valor_venda_projetado"])}</div>
-<div class="card-small">Com valorização de {str(valorizacao_anual).replace(".", ",")}% ao ano</div>
-</div>
+        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Premissas de valorização</div>', unsafe_allow_html=True)
 
-<div class="card">
-<div class="card-label">Total aportado até venda</div>
-<div class="card-value">{float_to_brl(resumo["valor_aportado_ate_venda"])}</div>
-<div class="card-small">Entrada + parcelas + reforços</div>
-</div>
+        c1, c2, c3 = st.columns(3)
 
-<div class="card card-good">
-<div class="card-label">Lucro bruto estimado</div>
-<div class="card-value">{float_to_brl(resumo["lucro_bruto"])}</div>
-<div class="card-small">Venda projetada menos aportes</div>
-</div>
+        with c1:
+            dados["valorizacao_anual"] = st.slider("Valorização anual estimada", 0.0, 30.0, float(dados["valorizacao_anual"]), 0.5)
 
-<div class="card">
-<div class="card-label">ROI anual aproximado</div>
-<div class="card-value">{pct(resumo["roi_ano"])}</div>
-<div class="card-small">Rentabilidade composta aproximada</div>
-</div>
-</div>
+        with c2:
+            dados["cub_anual"] = st.slider("CUB anual estimado", 0.0, 15.0, float(dados["cub_anual"]), 0.1)
 
-<div class="card-grid">
-<div class="card">
-<div class="card-label">Preço por m²</div>
-<div class="card-value">{preco_m2_texto}</div>
-<div class="card-small">Preço total / área privativa</div>
-</div>
+        with c3:
+            dados["risco"] = st.selectbox("Risco percebido", ["Baixo", "Médio", "Alto"], index=["Baixo", "Médio", "Alto"].index(dados["risco"]))
 
-<div class="card">
-<div class="card-label">Reforço antes da entrega</div>
-<div class="card-value">{float_to_brl(row["reforco_antes_entrega"])}</div>
-<div class="card-small">Conforme tabela do PDF</div>
-</div>
+        st.session_state.dados = dados
+        st.success("Dados atualizados.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-<div class="card">
-<div class="card-label">Reforço após entrega</div>
-<div class="card-value">{float_to_brl(row["reforco_depois_entrega"])}</div>
-<div class="card-small">Conforme tabela do PDF</div>
-</div>
 
-<div class="card">
-<div class="card-label">Prazo até entrega</div>
-<div class="card-value">{int(resumo["meses_ate_entrega"])} meses</div>
-<div class="card-small">Base: ano {ano_atual}</div>
-</div>
-</div>
+# =========================
+# FLUXO
+# =========================
+elif menu == "Fluxo de Pagamento":
+    st.markdown('<div class="hero-title">Fluxo de Pagamento</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero-subtitle">Configure entrada, parcelas e reforços antes e depois da entrega.</div>', unsafe_allow_html=True)
 
-<div class="big-card">
-<div class="big-card-title">Resultado projetado da operação</div>
-<div class="big-card-value">{float_to_brl(resultado_operacao)}</div>
-<div class="card-small" style="color:#d0d5dd;">Valor projetado de venda: capital aportado + lucro bruto estimado.</div>
-</div>
+    st.markdown('<div class="panel-card">', unsafe_allow_html=True)
 
-<div class="info-box">
-<div class="section-title">Leitura estratégica</div>
-<p style="font-size:17px; color:#344054; line-height:1.6;">{leitura}</p>
-</div>
-"""
-            st.markdown(html_painel, unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
 
-            st.markdown('<div class="section-title">Dados extraídos do PDF</div>', unsafe_allow_html=True)
+    with c1:
+        dados["entrada"] = st.number_input("Entrada", min_value=0.0, value=float(dados["entrada"]), step=5000.0)
+        dados["parcelas_mensais"] = st.number_input("Quantidade de parcelas mensais", min_value=1, value=int(dados["parcelas_mensais"]))
 
-            dados = {
-                "Torre": row["torre"],
-                "Apartamento": row["apartamento"],
-                "Entrega": row["entrega"],
-                "Localização": row["localizacao"],
-                "Grupo no PDF": row["grupo_pdf"],
-                "Tipo": row["tipo"],
-                "Área privativa": area_texto,
-                "Preço por m²": preco_m2_texto,
-                "Entrada": float_to_brl(row["entrada"]),
-                "Parcelas": f"{int(row['qtd_parcelas'])}x {float_to_brl(row['valor_parcela'])}",
-                "Reforço antes da entrega": float_to_brl(row["reforco_antes_entrega"]),
-                "Reforço depois da entrega": float_to_brl(row["reforco_depois_entrega"]),
-                "Total tabela": float_to_brl(row["total_tabela"])
-            }
+    with c2:
+        dados["valor_parcela"] = st.number_input("Valor da parcela mensal", min_value=0.0, value=float(dados["valor_parcela"]), step=500.0)
+        dados["reforco_pre"] = st.number_input("Valor do reforço antes da entrega", min_value=0.0, value=float(dados["reforco_pre"]), step=5000.0)
 
-            st.dataframe(
-                pd.DataFrame(dados.items(), columns=["Campo", "Valor"]),
-                use_container_width=True,
-                hide_index=True
-            )
+    with c3:
+        dados["qtd_reforcos_pre"] = st.number_input("Qtd. reforços antes da entrega", min_value=0, value=int(dados["qtd_reforcos_pre"]))
+        dados["reforco_pos"] = st.number_input("Valor do reforço depois da entrega", min_value=0.0, value=float(dados["reforco_pos"]), step=5000.0)
+        dados["qtd_reforcos_pos"] = st.number_input("Qtd. reforços depois da entrega", min_value=0, value=int(dados["qtd_reforcos_pos"]))
 
-            st.markdown('<div class="section-title">Fluxo projetado</div>', unsafe_allow_html=True)
+    st.session_state.dados = dados
+    st.markdown('</div>', unsafe_allow_html=True)
 
-            fluxo_view = fluxo.copy()
-            fluxo_view["Aporte"] = fluxo_view["Aporte"].apply(float_to_brl)
-            fluxo_view["Valor projetado do imóvel"] = fluxo_view["Valor projetado do imóvel"].apply(float_to_brl)
 
-            st.dataframe(
-                fluxo_view,
-                use_container_width=True,
-                hide_index=True
-            )
+# =========================
+# CÁLCULOS
+# =========================
+area = dados["area"]
+preco_total = dados["preco_total"]
+valor_m2 = preco_total / area if area > 0 else 0
 
-            csv = fluxo.to_csv(index=False).encode("utf-8-sig")
+meses = int(dados["prazo_entrega"])
+valorizacao_mensal = (1 + dados["valorizacao_anual"] / 100) ** (1 / 12) - 1
+cub_mensal = (1 + dados["cub_anual"] / 100) ** (1 / 12) - 1
 
-            st.download_button(
-                "Baixar fluxo em CSV",
-                data=csv,
-                file_name=f"fluxo_apto_{row['apartamento']}.csv",
-                mime="text/csv"
-            )
+valor_entrega = preco_total * ((1 + valorizacao_mensal) ** meses)
 
-            with st.expander("Linha original encontrada no PDF"):
-                st.code(row["linha_original"])
+total_parcelas = 0
+fluxo = []
 
-        elif unidade_digitada:
-            st.warning("Não encontrei essa unidade na base extraída. Tente selecionar 'Todas' as torres ou confira o número.")
+for m in range(1, dados["parcelas_mensais"] + 1):
+    parcela_corrigida = dados["valor_parcela"] * ((1 + cub_mensal) ** m)
+    total_parcelas += parcela_corrigida
+
+total_reforcos_pre = dados["reforco_pre"] * dados["qtd_reforcos_pre"]
+total_reforcos_pos = dados["reforco_pos"] * dados["qtd_reforcos_pos"]
+
+investido_ate_entrega = dados["entrada"]
+
+for m in range(1, meses + 1):
+    pagamento = 0
+
+    if m <= dados["parcelas_mensais"]:
+        pagamento += dados["valor_parcela"] * ((1 + cub_mensal) ** m)
+
+    if dados["qtd_reforcos_pre"] > 0:
+        intervalo = max(1, meses // dados["qtd_reforcos_pre"])
+        if m % intervalo == 0 and m <= meses:
+            pagamento += dados["reforco_pre"]
+
+    investido_ate_entrega += pagamento
+
+    valor_imovel_mes = preco_total * ((1 + valorizacao_mensal) ** m)
+
+    fluxo.append({
+        "Mês": m,
+        "Valor do Imóvel": valor_imovel_mes,
+        "Total Investido": investido_ate_entrega,
+        "Lucro Bruto": valor_imovel_mes - investido_ate_entrega,
+        "Pagamento Mensal": pagamento
+    })
+
+df_fluxo = pd.DataFrame(fluxo)
+
+lucro_entrega = valor_entrega - investido_ate_entrega
+roi_entrega = (lucro_entrega / investido_ate_entrega) * 100 if investido_ate_entrega > 0 else 0
+media_mensal = investido_ate_entrega / meses if meses > 0 else 0
+
+nota = calcular_nota(
+    roi_entrega,
+    valor_m2,
+    dados["valor_m2_ref"],
+    dados["risco"],
+    dados["prazo_entrega"]
+)
+
+
+# =========================
+# PAINEL EXECUTIVO
+# =========================
+if menu == "Painel Executivo":
+    st.markdown('<div class="hero-title">Painel Executivo</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="hero-subtitle">Análise profissional do empreendimento <b>{dados["empreendimento"]}</b> — Unidade {dados["unidade"]}</div>',
+        unsafe_allow_html=True
+    )
+
+    k1, k2, k3, k4, k5 = st.columns(5)
+
+    with k1:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-label">Preço Total</div>
+            <div class="kpi-value">{moeda(preco_total)}</div>
+            <div class="kpi-positive">Valor de tabela</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with k2:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-label">Valor por m²</div>
+            <div class="kpi-value">{moeda(valor_m2)}</div>
+            <div class="kpi-positive">Referência: {moeda(dados["valor_m2_ref"])}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with k3:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-label">Valor Projetado na Entrega</div>
+            <div class="kpi-value">{moeda(valor_entrega)}</div>
+            <div class="kpi-positive">Valorização de {pct(dados["valorizacao_anual"])} ao ano</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with k4:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-label">Lucro Bruto Estimado</div>
+            <div class="kpi-value">{moeda(lucro_entrega)}</div>
+            <div class="kpi-positive">ROI: {pct(roi_entrega)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with k5:
+        cor_badge = "kpi-positive" if nota >= 7 else "kpi-negative" if nota < 5 else "kpi-positive"
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-label">Nota da Oportunidade</div>
+            <div class="kpi-value">{nota:.1f}/10</div>
+            <div class="{cor_badge}">Análise estratégica</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    c1, c2 = st.columns([1.15, 1])
+
+    with c1:
+        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+        st.plotly_chart(grafico_linha(df_fluxo, "Mês", "Valor do Imóvel", "Evolução Projetada do Imóvel"), use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with c2:
+        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+        st.plotly_chart(grafico_linha(df_fluxo, "Mês", "Lucro Bruto", "Lucro Bruto Projetado"), use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    c3, c4, c5 = st.columns([1, 1, 1])
+
+    with c3:
+        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Resumo do Ativo</div>', unsafe_allow_html=True)
+
+        st.markdown(f"""
+        <div class="metric-line"><span>Empreendimento</span><b>{dados["empreendimento"]}</b></div>
+        <div class="metric-line"><span>Localização</span><b>{dados["localizacao"]}</b></div>
+        <div class="metric-line"><span>Unidade</span><b>{dados["unidade"]}</b></div>
+        <div class="metric-line"><span>Tipo</span><b>{dados["tipo"]}</b></div>
+        <div class="metric-line"><span>Área privativa</span><b>{dados["area"]} m²</b></div>
+        <div class="metric-line"><span>Vagas</span><b>{dados["vagas"]}</b></div>
+        """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with c4:
+        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Indicadores Financeiros</div>', unsafe_allow_html=True)
+
+        st.markdown(f"""
+        <div class="metric-line"><span>Total investido até entrega</span><b>{moeda(investido_ate_entrega)}</b></div>
+        <div class="metric-line"><span>Média mensal investida</span><b>{moeda(media_mensal)}</b></div>
+        <div class="metric-line"><span>Lucro bruto estimado</span><b>{moeda(lucro_entrega)}</b></div>
+        <div class="metric-line"><span>ROI total</span><b>{pct(roi_entrega)}</b></div>
+        <div class="metric-line"><span>Prazo até entrega</span><b>{meses} meses</b></div>
+        """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with c5:
+        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Diagnóstico Executivo</div>', unsafe_allow_html=True)
+
+        if nota >= 8:
+            badge = '<span class="badge-good">Excelente oportunidade</span>'
+            texto = "O imóvel apresenta forte potencial de valorização em relação ao capital aportado."
+        elif nota >= 6:
+            badge = '<span class="badge-mid">Boa oportunidade</span>'
+            texto = "A operação é interessante, mas depende da confirmação do mercado, fluxo e liquidez."
         else:
-            st.info("Digite uma unidade para gerar o painel executivo.")
+            badge = '<span class="badge-bad">Atenção elevada</span>'
+            texto = "O negócio exige cautela. O retorno estimado pode não compensar o risco ou o fluxo."
 
-    with aba2:
-        df_view = df.copy()
+        st.markdown(badge, unsafe_allow_html=True)
+        st.write("")
+        st.write(texto)
 
-        for col in [
-            "entrada",
-            "valor_parcela",
-            "reforco_antes_entrega",
-            "reforco_depois_entrega",
-            "total_tabela"
-        ]:
-            if col in df_view.columns:
-                df_view[col] = df_view[col].apply(float_to_brl)
+        st.markdown(f"""
+        <div class="metric-line"><span>Risco</span><b>{dados["risco"]}</b></div>
+        <div class="metric-line"><span>Perfil ideal</span><b>Revenda / Valorização</b></div>
+        <div class="metric-line"><span>Estratégia</span><b>Comprar no fluxo e vender valorizado</b></div>
+        """, unsafe_allow_html=True)
 
-        st.dataframe(
-            df_view.drop(columns=["linha_original"], errors="ignore"),
-            use_container_width=True,
-            hide_index=True
-        )
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        st.download_button(
-            "Baixar base extraída em CSV",
-            data=df.to_csv(index=False).encode("utf-8-sig"),
-            file_name="base_extraida_pdf.csv",
-            mime="text/csv"
-        )
+    st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Tabela Executiva do Fluxo</div>', unsafe_allow_html=True)
+    st.dataframe(
+        df_fluxo.style.format({
+            "Valor do Imóvel": "R$ {:,.2f}",
+            "Total Investido": "R$ {:,.2f}",
+            "Lucro Bruto": "R$ {:,.2f}",
+            "Pagamento Mensal": "R$ {:,.2f}"
+        }),
+        use_container_width=True,
+        height=360
+    )
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    with aba3:
-        for p in paginas:
-            with st.expander(f"Página {p['pagina']}"):
-                st.text(p["texto"][:15000])
 
-else:
-    st.info("Envie um PDF para começar.")
+# =========================
+# COMPARATIVO
+# =========================
+elif menu == "Comparativo":
+    st.markdown('<div class="hero-title">Comparativo de Cenários</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero-subtitle">Compare cenários conservador, base e agressivo.</div>', unsafe_allow_html=True)
+
+    cenarios = []
+
+    for nome, val in [
+        ("Conservador", 8),
+        ("Base", dados["valorizacao_anual"]),
+        ("Agressivo", 15)
+    ]:
+        vm = (1 + val / 100) ** (1 / 12) - 1
+        vf = preco_total * ((1 + vm) ** meses)
+        lucro = vf - investido_ate_entrega
+        roi = lucro / investido_ate_entrega * 100 if investido_ate_entrega > 0 else 0
+
+        cenarios.append({
+            "Cenário": nome,
+            "Valorização Anual": val,
+            "Valor na Entrega": vf,
+            "Lucro Bruto": lucro,
+            "ROI": roi
+        })
+
+    df_cenarios = pd.DataFrame(cenarios)
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+        st.plotly_chart(grafico_barras(df_cenarios, "Cenário", "Valor na Entrega", "Valor Projetado por Cenário"), use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with c2:
+        st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+        st.plotly_chart(grafico_barras(df_cenarios, "Cenário", "ROI", "ROI por Cenário"), use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+    st.dataframe(
+        df_cenarios.style.format({
+            "Valorização Anual": "{:.2f}%",
+            "Valor na Entrega": "R$ {:,.2f}",
+            "Lucro Bruto": "R$ {:,.2f}",
+            "ROI": "{:.2f}%"
+        }),
+        use_container_width=True
+    )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+# =========================
+# RELATÓRIO
+# =========================
+elif menu == "Relatório":
+    st.markdown('<div class="hero-title">Relatório Executivo</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero-subtitle">Resumo pronto para apresentar a investidores.</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="panel-card">', unsafe_allow_html=True)
+
+    st.markdown(f"""
+# Relatório de Análise Imobiliária
+
+## 1. Identificação do Ativo
+
+**Empreendimento:** {dados["empreendimento"]}  
+**Localização:** {dados["localizacao"]}  
+**Unidade:** {dados["unidade"]}  
+**Tipo:** {dados["tipo"]}  
+**Área privativa:** {dados["area"]} m²  
+**Vagas:** {dados["vagas"]}  
+
+---
+
+## 2. Dados Comerciais
+
+**Preço total:** {moeda(preco_total)}  
+**Valor por m²:** {moeda(valor_m2)}  
+**Valor médio de referência da região:** {moeda(dados["valor_m2_ref"])}  
+**Prazo até entrega:** {meses} meses  
+
+---
+
+## 3. Projeção Financeira
+
+**Valorização anual considerada:** {pct(dados["valorizacao_anual"])}  
+**Valor projetado na entrega:** {moeda(valor_entrega)}  
+**Total investido até a entrega:** {moeda(investido_ate_entrega)}  
+**Lucro bruto estimado:** {moeda(lucro_entrega)}  
+**ROI total estimado:** {pct(roi_entrega)}  
+**Aporte médio mensal:** {moeda(media_mensal)}  
+
+---
+
+## 4. Avaliação Estratégica
+
+**Nota da oportunidade:** {nota:.1f}/10  
+**Risco:** {dados["risco"]}  
+**Perfil ideal:** Revenda com foco em valorização patrimonial.  
+
+### Leitura executiva
+
+O ativo apresenta uma relação entre capital aportado, valorização esperada e prazo de entrega que deve ser analisada principalmente pelo fluxo financeiro.  
+Quanto menor o desencaixe até a entrega e maior a valorização projetada, maior tende a ser a eficiência do capital investido.
+
+---
+
+## 5. Conclusão
+
+Esta operação é mais indicada para investidores que buscam ganho de capital através da valorização do imóvel durante o período de obra, aproveitando o parcelamento direto com a construtora e possível revenda futura.
+""")
+
+    st.markdown('</div>', unsafe_allow_html=True)
