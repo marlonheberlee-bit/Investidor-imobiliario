@@ -936,7 +936,7 @@ if menu == "Painel Executivo":
             score_val = ind.get("score", 0)
             kpi_card("⭐", "Score", f"{score_val:.1f}/10", "Nota executiva", "good" if score_val >= 7 else "mid" if score_val >= 5 else "bad")
 
-        st.markdown('<div class="executive-row"></div>', unsafe_allow_html=True)
+        st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
         col_resumo, col_fluxo, col_decisao = st.columns([1.08, 1.08, 1])
 
         with col_resumo:
@@ -972,15 +972,12 @@ if menu == "Painel Executivo":
             metric_line("ROI na entrega", pct(ind.get("roi_entrega", 0)))
             st.markdown('</div>', unsafe_allow_html=True)
 
+        st.markdown('<div style="height:18px"></div>', unsafe_allow_html=True)
         chart_left, chart_right = st.columns([1.1, 1])
         with chart_left:
-            st.markdown('<div class="panel-card chart-card">', unsafe_allow_html=True)
             st.plotly_chart(fig_patrimonio(df), use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
         with chart_right:
-            st.markdown('<div class="panel-card chart-card">', unsafe_allow_html=True)
             st.plotly_chart(fig_fluxo(df), use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================
 # PROPOSTA MANUAL
