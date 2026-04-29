@@ -28,11 +28,22 @@ st.set_page_config(
 # FUNÇÕES BÁSICAS
 # =========================
 
-def brl_to_float(valor: str) -> float:
-    if not valor:
+def brl_to_float(valor) -> float:
+    if valor is None:
         return 0.0
-    v = str(valor).replace("R$", "").replace(" ", "").strip()
-    v = v.replace(".", "").replace(",", ".")
+
+    v = str(valor)
+    v = v.replace("R$", "")
+    v = v.replace("m²", "")
+    v = v.replace("m2", "")
+    v = v.replace(" ", "")
+    v = v.strip()
+
+    if "," in v:
+        v = v.replace(".", "").replace(",", ".")
+    else:
+        v = v.replace(",", "")
+
     try:
         return float(v)
     except Exception:
@@ -64,7 +75,7 @@ def normalizar_texto(txt: str) -> str:
 
 
 # =========================
-# LEITURA PDF
+# LEITURA DO PDF
 # =========================
 
 def extrair_texto_pdf(uploaded_file, usar_ocr=False) -> List[Dict]:
@@ -96,7 +107,7 @@ def extrair_texto_pdf(uploaded_file, usar_ocr=False) -> List[Dict]:
 
 
 # =========================
-# EXTRAÇÃO DA TABELA
+# EXTRAÇÃO DE DADOS DO PDF
 # =========================
 
 def extrair_reais(linha: str) -> List[str]:
@@ -184,19 +195,28 @@ def identificar_torre_entrega(texto_pagina: str):
 
 
 def extrair_tipos(texto_total: str) -> Dict[str, Dict]:
-    tipos = {}
+    tipos = {
+        "01": {"tipo": "TIPO 01", "area_m2": 84.81},
+        "02": {"tipo": "TIPO 02", "area_m2": 85.87},
+        "03": {"tipo": "TIPO 03", "area_m2": 83.50},
+        "04": {"tipo": "TIPO 04", "area_m2": 83.50},
+        "05": {"tipo": "TIPO 05", "area_m2": 85.87},
+        "06": {"tipo": "TIPO 06", "area_m2": 90.93},
+    }
 
     for m in re.finditer(
-        r"TIPO\s*(\d{1,2}).{0,120}?(\d{2,3},\d{2})\s*m²",
+        r"TIPO\s*(\d{1,2}).{0,250}?(\d{2,3}[,.]\d{2})\s*m",
         texto_total,
         flags=re.I | re.S
     ):
         cod = m.group(1).zfill(2)
         area = brl_to_float(m.group(2))
-        tipos[cod] = {
-            "tipo": f"TIPO {cod}",
-            "area_m2": area
-        }
+
+        if area > 0:
+            tipos[cod] = {
+                "tipo": f"TIPO {cod}",
+                "area_m2": area
+            }
 
     return tipos
 
@@ -224,7 +244,6 @@ def parsear_linhas(paginas: List[Dict]) -> pd.DataFrame:
 
                 entrada = brl_to_float(valores[0])
                 total = brl_to_float(valores[-1])
-
                 reforcos = [brl_to_float(v) for v in valores[2:-1]]
 
                 reforco_antes = reforcos[0] if len(reforcos) >= 1 else 0
@@ -283,7 +302,6 @@ def calcular_investimento(row, valorizacao_anual, cub_anual, ano_atual, ano_vend
     tx_cub_mensal = (1 + cub_anual / 100) ** (1 / 12) - 1
 
     fluxo = []
-
     saldo_aportado = entrada
 
     fluxo.append({
@@ -309,10 +327,9 @@ def calcular_investimento(row, valorizacao_anual, cub_anual, ano_atual, ano_vend
 
         if reforco_depois > 0 and mes > meses_ate_entrega and mes <= meses_total and mes % 6 == 0:
             aporte += reforco_depois * fator_cub
-            descricao.append("Reforço depois da entrega")
+            descricao.append("Reforço após entrega")
 
         saldo_aportado += aporte
-
         valor_imovel = total_tabela * ((1 + tx_val_mensal) ** mes)
 
         fluxo.append({
@@ -324,7 +341,6 @@ def calcular_investimento(row, valorizacao_anual, cub_anual, ano_atual, ano_vend
 
     valor_venda = total_tabela * ((1 + tx_val_mensal) ** meses_ate_venda)
     lucro_bruto = valor_venda - saldo_aportado
-
     roi_total = (lucro_bruto / saldo_aportado * 100) if saldo_aportado > 0 else 0
 
     if meses_ate_venda > 0 and saldo_aportado > 0:
@@ -376,15 +392,11 @@ def calcular_investimento(row, valorizacao_anual, cub_anual, ano_atual, ano_vend
 
 
 # =========================
-# CSS EXECUTIVO
+# CSS
 # =========================
 
 st.markdown("""
 <style>
-.main {
-    background-color: #f6f8fb;
-}
-
 .block-container {
     padding-top: 2rem;
     padding-bottom: 3rem;
@@ -416,7 +428,7 @@ st.markdown("""
     border-radius: 20px;
     padding: 20px;
     box-shadow: 0 8px 22px rgba(16, 24, 40, 0.07);
-    min-height: 122px;
+    min-height: 124px;
 }
 
 .card-label {
@@ -427,11 +439,10 @@ st.markdown("""
 }
 
 .card-value {
-    font-size: 23px;
+    font-size: 22px;
     font-weight: 900;
     color: #101828;
     line-height: 1.2;
-    word-break: normal;
 }
 
 .card-small {
@@ -500,6 +511,7 @@ st.markdown("""
     .card-grid {
         grid-template-columns: 1fr;
     }
+
     .big-card-value {
         font-size: 30px;
     }
@@ -667,108 +679,100 @@ if uploaded:
 
             resultado_operacao = resumo["valor_aportado_ate_venda"] + resumo["lucro_bruto"]
 
-            st.markdown(f"""
-            <div class="executive-title">
-                Painel Executivo — {row['torre']} | Apartamento {row['apartamento']}
-            </div>
+            html_painel = f"""
+<div class="executive-title">Painel Executivo — {row['torre']} | Apartamento {row['apartamento']}</div>
+<div class="executive-subtitle">Entrega em {row['entrega']} • {row['tipo']} • {area_texto} • Projeção de venda em {ano_venda}</div>
 
-            <div class="executive-subtitle">
-                Entrega em {row['entrega']} • {row['tipo']} • {area_texto} • Projeção de venda em {ano_venda}
-            </div>
+<div class="card-grid">
+<div class="card">
+<div class="card-label">Preço total de tabela</div>
+<div class="card-value">{float_to_brl(row["total_tabela"])}</div>
+<div class="card-small">Valor informado no PDF</div>
+</div>
 
-            <div class="card-grid">
-                <div class="card">
-                    <div class="card-label">Preço total de tabela</div>
-                    <div class="card-value">{float_to_brl(row["total_tabela"])}</div>
-                    <div class="card-small">Valor informado no PDF</div>
-                </div>
+<div class="card">
+<div class="card-label">Entrada</div>
+<div class="card-value">{float_to_brl(row["entrada"])}</div>
+<div class="card-small">Aporte inicial</div>
+</div>
 
-                <div class="card">
-                    <div class="card-label">Entrada</div>
-                    <div class="card-value">{float_to_brl(row["entrada"])}</div>
-                    <div class="card-small">Aporte inicial</div>
-                </div>
+<div class="card">
+<div class="card-label">Parcela mensal</div>
+<div class="card-value">{int(row["qtd_parcelas"])}x {float_to_brl(row["valor_parcela"])}</div>
+<div class="card-small">Antes de reajuste CUB/INCC</div>
+</div>
 
-                <div class="card">
-                    <div class="card-label">Parcela mensal</div>
-                    <div class="card-value">{int(row["qtd_parcelas"])}x {float_to_brl(row["valor_parcela"])}</div>
-                    <div class="card-small">Antes de reajuste CUB/INCC</div>
-                </div>
+<div class="card {classe_nota}">
+<div class="card-label">Nota do investimento</div>
+<div class="card-value">{str(round(resumo["nota"], 1)).replace(".", ",")}/10</div>
+<div class="card-small">{texto_nota}</div>
+</div>
+</div>
 
-                <div class="card {classe_nota}">
-                    <div class="card-label">Nota do investimento</div>
-                    <div class="card-value">{str(round(resumo["nota"], 1)).replace(".", ",")}/10</div>
-                    <div class="card-small">{texto_nota}</div>
-                </div>
-            </div>
+<div class="card-grid">
+<div class="card">
+<div class="card-label">Valor projetado de venda</div>
+<div class="card-value">{float_to_brl(resumo["valor_venda_projetado"])}</div>
+<div class="card-small">Com valorização de {str(valorizacao_anual).replace(".", ",")}% ao ano</div>
+</div>
 
-            <div class="card-grid">
-                <div class="card">
-                    <div class="card-label">Valor projetado de venda</div>
-                    <div class="card-value">{float_to_brl(resumo["valor_venda_projetado"])}</div>
-                    <div class="card-small">Com valorização de {str(valorizacao_anual).replace(".", ",")}% ao ano</div>
-                </div>
+<div class="card">
+<div class="card-label">Total aportado até venda</div>
+<div class="card-value">{float_to_brl(resumo["valor_aportado_ate_venda"])}</div>
+<div class="card-small">Entrada + parcelas + reforços</div>
+</div>
 
-                <div class="card">
-                    <div class="card-label">Total aportado até venda</div>
-                    <div class="card-value">{float_to_brl(resumo["valor_aportado_ate_venda"])}</div>
-                    <div class="card-small">Entrada + parcelas + reforços</div>
-                </div>
+<div class="card card-good">
+<div class="card-label">Lucro bruto estimado</div>
+<div class="card-value">{float_to_brl(resumo["lucro_bruto"])}</div>
+<div class="card-small">Venda projetada menos aportes</div>
+</div>
 
-                <div class="card card-good">
-                    <div class="card-label">Lucro bruto estimado</div>
-                    <div class="card-value">{float_to_brl(resumo["lucro_bruto"])}</div>
-                    <div class="card-small">Venda projetada menos aportes</div>
-                </div>
+<div class="card">
+<div class="card-label">ROI anual aproximado</div>
+<div class="card-value">{pct(resumo["roi_ano"])}</div>
+<div class="card-small">Rentabilidade composta aproximada</div>
+</div>
+</div>
 
-                <div class="card">
-                    <div class="card-label">ROI anual aproximado</div>
-                    <div class="card-value">{pct(resumo["roi_ano"])}</div>
-                    <div class="card-small">Rentabilidade composta aproximada</div>
-                </div>
-            </div>
+<div class="card-grid">
+<div class="card">
+<div class="card-label">Preço por m²</div>
+<div class="card-value">{preco_m2_texto}</div>
+<div class="card-small">Preço total / área privativa</div>
+</div>
 
-            <div class="card-grid">
-                <div class="card">
-                    <div class="card-label">Preço por m²</div>
-                    <div class="card-value">{preco_m2_texto}</div>
-                    <div class="card-small">Preço total / área privativa</div>
-                </div>
+<div class="card">
+<div class="card-label">Reforço antes da entrega</div>
+<div class="card-value">{float_to_brl(row["reforco_antes_entrega"])}</div>
+<div class="card-small">Conforme tabela do PDF</div>
+</div>
 
-                <div class="card">
-                    <div class="card-label">Reforço antes da entrega</div>
-                    <div class="card-value">{float_to_brl(row["reforco_antes_entrega"])}</div>
-                    <div class="card-small">Repetido conforme regra do PDF</div>
-                </div>
+<div class="card">
+<div class="card-label">Reforço após entrega</div>
+<div class="card-value">{float_to_brl(row["reforco_depois_entrega"])}</div>
+<div class="card-small">Conforme tabela do PDF</div>
+</div>
 
-                <div class="card">
-                    <div class="card-label">Reforço após entrega</div>
-                    <div class="card-value">{float_to_brl(row["reforco_depois_entrega"])}</div>
-                    <div class="card-small">Repetido conforme regra do PDF</div>
-                </div>
+<div class="card">
+<div class="card-label">Prazo até entrega</div>
+<div class="card-value">{int(resumo["meses_ate_entrega"])} meses</div>
+<div class="card-small">Base: ano {ano_atual}</div>
+</div>
+</div>
 
-                <div class="card">
-                    <div class="card-label">Prazo até entrega</div>
-                    <div class="card-value">{int(resumo["meses_ate_entrega"])} meses</div>
-                    <div class="card-small">Base: ano {ano_atual}</div>
-                </div>
-            </div>
+<div class="big-card">
+<div class="big-card-title">Resultado projetado da operação</div>
+<div class="big-card-value">{float_to_brl(resultado_operacao)}</div>
+<div class="card-small" style="color:#d0d5dd;">Valor projetado de venda: capital aportado + lucro bruto estimado.</div>
+</div>
 
-            <div class="big-card">
-                <div class="big-card-title">Resultado projetado da operação</div>
-                <div class="big-card-value">{float_to_brl(resultado_operacao)}</div>
-                <div class="card-small" style="color:#d0d5dd;">
-                    Este é o valor projetado de venda. Dentro dele está o capital aportado + lucro bruto estimado.
-                </div>
-            </div>
-
-            <div class="info-box">
-                <div class="section-title">Leitura estratégica</div>
-                <p style="font-size:17px; color:#344054; line-height:1.6;">
-                    {leitura}
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
+<div class="info-box">
+<div class="section-title">Leitura estratégica</div>
+<p style="font-size:17px; color:#344054; line-height:1.6;">{leitura}</p>
+</div>
+"""
+            st.markdown(html_painel, unsafe_allow_html=True)
 
             st.markdown('<div class="section-title">Dados extraídos do PDF</div>', unsafe_allow_html=True)
 
