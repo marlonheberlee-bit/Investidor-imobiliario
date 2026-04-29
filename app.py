@@ -792,6 +792,32 @@ def salvar_analise_atual(nome: str, d: Dict, ind: Dict):
     st.session_state.analises_salvas.insert(0, item)
 
 
+
+def benchmark_m2_por_regiao(localizacao: str) -> float:
+    """Benchmark interno editável para referência de mercado por região."""
+    loc = str(localizacao or "").lower()
+    if "porto belo" in loc or "perequê" in loc or "pereque" in loc:
+        return 17000.0
+    if "itapema" in loc:
+        return 19000.0
+    if "balneário camboriú" in loc or "balneario camboriu" in loc or "bc" in loc:
+        return 28000.0
+    if "bombinhas" in loc:
+        return 18000.0
+    return 17000.0
+
+
+def comparacao_m2(valor_m2: float, benchmark: float):
+    if benchmark <= 0 or valor_m2 <= 0:
+        return "Sem referência", 0.0, "mid"
+    dif = ((valor_m2 / benchmark) - 1) * 100
+    if dif <= -8:
+        return "Abaixo do mercado", dif, "good"
+    if dif <= 5:
+        return "Dentro do mercado", dif, "mid"
+    return "Acima do mercado", dif, "bad"
+
+
 def render_inputs_proposta(d: Dict, prefixo: str = 'manual'):
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -807,7 +833,22 @@ def render_inputs_proposta(d: Dict, prefixo: str = 'manual'):
     with c3:
         d['qtd_parcelas'] = st.number_input('Quantidade de parcelas mensais', min_value=1, value=int(d.get('qtd_parcelas', 120) or 120), step=1, key=f'{prefixo}_qtd_parcelas')
         d['entrega_ano'] = st.number_input('Ano de entrega', min_value=2026, value=int(d.get('entrega_ano', 2029) or 2029), step=1, key=f'{prefixo}_entrega_ano')
-        d['valor_m2_ref'] = st.number_input('Valor m² de referência', min_value=0.0, value=float(d.get('valor_m2_ref', 17000) or 17000), step=500.0, key=f'{prefixo}_valor_m2_ref')
+        d['usar_benchmark_auto'] = st.checkbox(
+            'Benchmark automático por região',
+            value=bool(d.get('usar_benchmark_auto', True)),
+            key=f'{prefixo}_benchmark_auto'
+        )
+        if d.get('usar_benchmark_auto', True):
+            d['valor_m2_ref'] = benchmark_m2_por_regiao(d.get('localizacao', ''))
+            st.info(f"Preço médio da região aplicado: {moeda(d['valor_m2_ref'])}/m²")
+        else:
+            d['valor_m2_ref'] = st.number_input(
+                'Preço médio da região / benchmark (R$/m²)',
+                min_value=0.0,
+                value=float(d.get('valor_m2_ref', 17000) or 17000),
+                step=500.0,
+                key=f'{prefixo}_valor_m2_ref'
+            )
         d['parser'] = st.selectbox('Origem do fluxo', ['Manual / Proposta', 'AP Towers', 'Genérico'], index=0 if d.get('parser') not in ['AP Towers','Genérico'] else ['Manual / Proposta','AP Towers','Genérico'].index(d.get('parser')), key=f'{prefixo}_parser')
 
     st.markdown('### Reforços')
@@ -873,6 +914,7 @@ if "dados" not in st.session_state:
         "cub_anual": 4.3,
         "valorizacao_anual": 12.0,
         "valor_m2_ref": 17000.0,
+        "usar_benchmark_auto": True,
         "parser": "",
         "trecho": "",
     }
@@ -1039,6 +1081,8 @@ if menu == "Painel Executivo":
                 ("Área privativa", f"{float(d.get('area',0) or 0):.2f} m²"),
                 ("Preço total", moeda(d.get("preco_total", 0))),
                 ("Valor por m²", moeda(ind.get("valor_m2", 0))),
+                ("Preço médio região", moeda(d.get("valor_m2_ref", 0))),
+                ("Diferença vs mercado", f"{comparacao_m2(ind.get('valor_m2', 0), float(d.get('valor_m2_ref', 0) or 0))[1]:.2f}%".replace(".", ",")),
             ])
         with col_fluxo:
             card_html("Fluxo extraído / ajustado", [
@@ -1092,7 +1136,8 @@ elif menu == "Proposta Manual":
         with c1:
             kpi_card("🏷️", "Preço", moeda(d.get("preco_total", 0)), "Valor da proposta", "mid")
         with c2:
-            kpi_card("📐", "Valor m²", moeda(ind_manual.get("valor_m2", 0)), f"Área {float(d.get('area',0) or 0):.2f} m²", "good")
+            status_m2, dif_m2, cls_m2 = comparacao_m2(ind_manual.get("valor_m2", 0), float(d.get("valor_m2_ref", 0) or 0))
+            kpi_card("📐", "Valor m²", moeda(ind_manual.get("valor_m2", 0)), f"{status_m2} ({dif_m2:.2f}%)".replace(".", ","), cls_m2)
         with c3:
             kpi_card("💰", "Investido até entrega", moeda(ind_manual.get("investido_entrega", 0)), f"CUB {pct(d.get('cub_anual',0))}", "mid")
         with c4:
@@ -1123,7 +1168,12 @@ elif menu == "Dados e Premissas":
         d["entrega_ano"] = st.number_input("Ano de entrega", value=int(d.get("entrega_ano", 2029) or 2029), min_value=2026)
         d["cub_anual"] = st.slider("CUB anual estimado", 0.0, 15.0, float(d.get("cub_anual", 4.3) or 4.3), 0.1)
         d["valorizacao_anual"] = st.slider("Valorização anual estimada", 0.0, 30.0, float(d.get("valorizacao_anual", 12) or 12), 0.5)
-        d["valor_m2_ref"] = st.number_input("Valor m² referência", value=float(d.get("valor_m2_ref", 17000) or 17000), step=500.0)
+        d["usar_benchmark_auto"] = st.checkbox("Benchmark automático por região", value=bool(d.get("usar_benchmark_auto", True)))
+        if d.get("usar_benchmark_auto", True):
+            d["valor_m2_ref"] = benchmark_m2_por_regiao(d.get("localizacao", ""))
+            st.info(f"Preço médio da região aplicado: {moeda(d['valor_m2_ref'])}/m²")
+        else:
+            d["valor_m2_ref"] = st.number_input("Preço médio da região / benchmark (R$/m²)", value=float(d.get("valor_m2_ref", 17000) or 17000), step=500.0)
     st.session_state.dados = d
     st.success("Premissas atualizadas.")
     st.markdown('</div>', unsafe_allow_html=True)
