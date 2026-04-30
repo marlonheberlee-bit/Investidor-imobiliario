@@ -343,7 +343,7 @@ def buscar_unidade_generico(texto: str, linhas: List[str], unidade: str) -> Opti
     vals = [num_br(v) for v in re.findall(r"R\$\s*[\d\.]+,\d{2}", bloco)]
     areas = [num_br(a) for a in re.findall(r"(\d{2,3}[,.]\d{2})\s*m[²2]", bloco, flags=re.I)]
     return {
-        "empreendimento": "Empreendimento identificado no PDF",
+        "empreendimento": extrair_nome_empreendimento_generico(texto, linhas, ""),
         "torre": "",
         "localizacao": "",
         "unidade": str(unidade),
@@ -793,6 +793,92 @@ def salvar_analise_atual(nome: str, d: Dict, ind: Dict):
 
 
 
+
+def dados_base_limpos() -> Dict:
+    return {
+        "empreendimento": "",
+        "construtora": "",
+        "localizacao": "",
+        "torre": "",
+        "unidade": "",
+        "tipo": "",
+        "descricao_tipo": "",
+        "area": 0.0,
+        "preco_total": 0.0,
+        "entrada": 0.0,
+        "qtd_parcelas": 120,
+        "valor_parcela": 0.0,
+        "reforco_pre_valor": 0.0,
+        "reforco_pos_valor": 0.0,
+        "qtd_reforcos_pre": 0,
+        "qtd_reforcos_pos": 0,
+        "meses_reforcos_pre": "",
+        "meses_reforcos_pos": "",
+        "entrega_ano": 2029,
+        "cub_anual": 4.3,
+        "valorizacao_anual": 12.0,
+        "valor_m2_ref": 17000.0,
+        "usar_benchmark_auto": True,
+        "parser": "",
+        "trecho": "",
+    }
+
+
+def extrair_nome_empreendimento_generico(texto: str, linhas: List[str] = None, nome_arquivo: str = "") -> str:
+    texto = texto or ""
+    linhas = linhas or []
+    todas = [l.strip() for l in texto.splitlines() if l and l.strip()]
+    todas += [str(l).strip() for l in linhas if str(l).strip()]
+
+    padroes = [
+        r"(?:empreendimento|edif[ií]cio|residencial|condom[ií]nio|lan[çc]amento|pré[- ]lan[çc]amento)\s*[:\-]\s*(.+)",
+        r"((?:residencial|edif[ií]cio|condom[ií]nio)\s+[A-ZÁÀÂÃÉÈÊÍÓÔÕÚÇ0-9][A-Za-zÁÀÂÃÉÈÊÍÓÔÕÚÇãõç0-9\s\-]+)",
+        r"((?:pré[- ]lan[çc]amento|lan[çc]amento)\s+[A-ZÁÀÂÃÉÈÊÍÓÔÕÚÇ0-9][A-Za-zÁÀÂÃÉÈÊÍÓÔÕÚÇãõç0-9\s\-]+)",
+    ]
+
+    for linha in todas[:100]:
+        lim = re.sub(r"\s+", " ", linha).strip()
+        for pad in padroes:
+            m = re.search(pad, lim, flags=re.I)
+            if m:
+                nome = re.sub(r"\s+", " ", m.group(1)).strip(" -|")
+                nome = re.sub(r"\b(TORRE|LOCALIZAÇÃO|LOCALIZACAO|TABELA|VALOR|TOTAL|ENTRADA)\b.*", "", nome, flags=re.I).strip(" -|")
+                if len(nome) >= 5 and not re.search(r"R\$|\d{2,3}[,.]\d{2}\s*m", nome, flags=re.I):
+                    return nome[:80]
+
+    for linha in todas[:100]:
+        lim = re.sub(r"\s+", " ", linha).strip()
+        if "AP TOWERS" in lim.upper():
+            m = re.search(r"(AP\s*TOWERS.*?FASE\s*\d+)", lim, flags=re.I)
+            if m:
+                return re.sub(r"\s+", " ", m.group(1)).strip().title()
+            return "AP Towers Porto Belo - Fase 01"
+
+    if nome_arquivo:
+        nome = re.sub(r"\.pdf$", "", nome_arquivo, flags=re.I)
+        nome = re.sub(r"\s*-\s*Tabela.*$", "", nome, flags=re.I)
+        nome = re.sub(r"\s*\d{2}[./-]\d{2}[./-]\d{4}.*$", "", nome)
+        nome = re.sub(r"\(\d+\)", "", nome).strip(" -_")
+        if len(nome) >= 5:
+            return nome[:80]
+
+    palavras_ruins = ["observações", "observacoes", "tipo", "apartamento", "entrada", "total", "parc", "valor", "r$", "torre", "localização", "localizacao"]
+    for linha in todas[:40]:
+        lim = re.sub(r"\s+", " ", linha).strip()
+        low = lim.lower()
+        if len(lim) >= 8 and not any(p in low for p in palavras_ruins) and not re.fullmatch(r"[\d\s]+", lim):
+            return lim[:80]
+
+    return "Empreendimento não identificado"
+
+
+def aplicar_nome_empreendimento_se_precisar(resultado: Dict, texto: str, linhas: List[str], nome_arquivo: str):
+    nome = str(resultado.get("empreendimento") or "")
+    if not nome or nome.lower().startswith("empreendimento identificado") or nome.lower() == "importe um pdf":
+        resultado["empreendimento"] = extrair_nome_empreendimento_generico(texto, linhas, nome_arquivo)
+    return resultado
+
+
 def benchmark_m2_por_regiao(localizacao: str) -> float:
     """Benchmark interno editável para referência de mercado por região."""
     loc = str(localizacao or "").lower()
@@ -891,35 +977,10 @@ def render_inputs_proposta(d: Dict, prefixo: str = 'manual'):
 # ESTADO
 # ============================================================
 if "dados" not in st.session_state:
-    st.session_state.dados = {
-        "empreendimento": "Importe um PDF",
-        "construtora": "",
-        "localizacao": "",
-        "torre": "",
-        "unidade": "",
-        "tipo": "",
-        "descricao_tipo": "",
-        "area": 0.0,
-        "preco_total": 0.0,
-        "entrada": 0.0,
-        "qtd_parcelas": 120,
-        "valor_parcela": 0.0,
-        "reforco_pre_valor": 0.0,
-        "reforco_pos_valor": 0.0,
-        "qtd_reforcos_pre": 0,
-        "qtd_reforcos_pos": 0,
-        "meses_reforcos_pre": "",
-        "meses_reforcos_pos": "",
-        "entrega_ano": 2029,
-        "cub_anual": 4.3,
-        "valorizacao_anual": 12.0,
-        "valor_m2_ref": 17000.0,
-        "usar_benchmark_auto": True,
-        "parser": "",
-        "trecho": "",
-    }
+    st.session_state.dados = dados_base_limpos()
+    st.session_state.dados["empreendimento"] = "Importe um PDF"
 
-for key, default in [("pdf_texto", ""), ("pdf_linhas", []), ("pdf_paginas", []), ("ultimo_resultado", None)]:
+for key, default in [("pdf_texto", ""), ("pdf_linhas", []), ("pdf_paginas", []), ("ultimo_resultado", None), ("pdf_nome_arquivo", "")]:
     if key not in st.session_state:
         st.session_state[key] = default
 if "analises_salvas" not in st.session_state:
@@ -951,6 +1012,14 @@ if menu == "Importar PDF":
     arquivo = st.file_uploader("PDF da tabela de vendas", type=["pdf"])
     if arquivo:
         texto, linhas, paginas = ler_pdf(arquivo)
+
+        nome_atual = getattr(arquivo, "name", "novo_pdf.pdf")
+        if st.session_state.get("pdf_nome_arquivo", "") != nome_atual:
+            st.session_state.dados = dados_base_limpos()
+            st.session_state.ultimo_resultado = None
+        st.session_state.pdf_nome_arquivo = nome_atual
+        st.session_state.dados["empreendimento"] = extrair_nome_empreendimento_generico(texto, linhas, nome_atual)
+
         st.session_state.pdf_texto = texto
         st.session_state.pdf_linhas = linhas
         st.session_state.pdf_paginas = paginas
